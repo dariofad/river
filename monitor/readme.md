@@ -7,8 +7,8 @@ This example uses the `ToyModel` from this
 
 - Build the kernel type definitions with `make vmlinux`
 - Setup the go module with `make mod_init`
-- Clone the `sim2cpp`repo in another directory, make sure you have the
-  changes in [PR #1](https://github.com/lyudeyun/sim2cpp/pull/1)
+- Clone the `sim2cpp`repo in another directory, checkout at commit
+  `7117506`
 - Build the `ToyModel` running `make` (in its directory)
 - create a local file named `.BIN_PATH` containing the path of the
   `ToyModel` binary you just built (e.g.,
