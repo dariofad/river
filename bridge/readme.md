@@ -12,9 +12,9 @@ MessagePack.
 
 ## Howto
 
-0. Ceck the [prerequisites](##prerequisites-and-build-notes)
+0. Check the [prerequisites](##prerequisites-and-build-notes)
 1. Start the server `go run bridge.go`
-2. Open Matlab and run the script
+2. Open Matlab and run the script specifying the number of data points
 
 ## Prerequisites and build notes
 
