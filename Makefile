@@ -7,11 +7,11 @@ SIMULATOR_PATH := simulator
 all: run
 
 vmlinux:
-	@mkdir -p $(SIMULATOR_PATH)/headers
-	@bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(SIMULATOR_PATH)/headers/vmlinux.h
+	mkdir -p $(SIMULATOR_PATH)/headers
+	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $(SIMULATOR_PATH)/headers/vmlinux.h
 
 generate: vmlinux
-	@cd $(SIMULATOR_PATH); go generate
+	cd $(SIMULATOR_PATH); go generate
 
 build: generate
 # with CGO_ENABLED=0 the build doesn't depend on libc

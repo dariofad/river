@@ -185,7 +185,7 @@ func handleConnection(conn net.Conn) {
 	_ = data
 
 	// ... RUN THE SIMULATION WITH eBPF HERE...
-	go simulator.Run()
+	go simulator.Run(data)
 
 	// create a mock result
 	result := Result{

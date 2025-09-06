@@ -1,16 +1,11 @@
 package simulator
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
-	"os/signal"
 	"strconv"
-	"time"
 
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
@@ -24,7 +19,7 @@ func RemoveMemlock() {
 	}
 }
 
-func Run() {
+func Run(data map[string]interface{}) {
 
 	// Load eBPF collection spec
 	spec, err := loadProbe()
@@ -81,6 +76,28 @@ func Run() {
 		log.Fatalf("setting variable: %s", err)
 	}
 
+	// Set the number of simulation todo temporary
+	var MAX_CYCLES uint32
+	dataPoints, ok := data["datapoints"].([]interface{})
+	if ok {
+		if len(dataPoints) != 2 {
+			log.Print("Unrecognized datapoints size")
+			return
+		}
+		numPoints, ok := dataPoints[1].(float64)
+		if !ok {
+			log.Print("Unrecognized datapoints content")
+			return
+		}
+		MAX_CYCLES = uint32(numPoints)
+	} else {
+		log.Print("Cannot detect the number of datapoints")
+		return
+	}
+	if err = spec.Variables["MAX_CYCLES"].Set(MAX_CYCLES); err != nil {
+		log.Fatalf("setting variable: %s", err)
+	}
+
 	// Load pre-compiled programs and maps into the kernel
 	var objs probePrograms
 	if err := spec.LoadAndAssign(&objs, nil); err != nil {
@@ -102,31 +119,11 @@ func Run() {
 	}
 	defer uprobe.Close()
 
-	// Launch the model in a dedicated process
-	binCmd := exec.CommandContext(context.Background(), binPath, "")
-	binOut, _ := binCmd.StdoutPipe()
-	log.Println("Model process started")
-	binCmd.Start()
-
-	// Wait for stop signal (and deallocate eBPF objects berfore
-	// termination)
-	stop := make(chan os.Signal, 5)
-	signal.Notify(stop, os.Interrupt)
-	for {
-		select {
-		case <-stop:
-			log.Print("Received signal, exiting..")
-			// Stop the model
-			if err = binCmd.Cancel(); err != nil {
-				log.Fatalf("cannot cancel command: %s", err)
-			}
-			// Print model output to stdout
-			binBytes, _ := io.ReadAll(binOut)
-			fmt.Println(string(binBytes))
-			return
-		default:
-			log.Println("Running")
-			time.Sleep(1 * time.Second)
-		}
+	// Run the simulation and wait until it terminates
+	binCmd := exec.Command(binPath)
+	log.Println("Starting simulation")
+	err = binCmd.Run()
+	if err != nil {
+		log.Printf("Simulation ended (%s)", err)
 	}
 }
