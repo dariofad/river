@@ -76,7 +76,7 @@ func Run(data map[string]interface{}) {
 		log.Fatalf("setting variable: %s", err)
 	}
 
-	// Set the number of simulation todo temporary
+	// Set the simulation number of cycles
 	var MAX_CYCLES uint32
 	dataPoints, ok := data["datapoints"].([]interface{})
 	if ok {
