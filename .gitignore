@@ -48,13 +48,10 @@ flycheck_*.el
 /network-security.data
 
 # generated ebpf code
-counter_bpf*
 probe_bpf*
 
 # modules' binaries
-cps_tracer
-cps_monitor
-cps_falsifier
+ebpf_simulator
 
 # vmlinux
 vmlinux.h

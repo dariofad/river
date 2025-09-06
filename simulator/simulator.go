@@ -1,6 +1,4 @@
-//go:build amd64 && linux
-
-package main
+package simulator
 
 import (
 	"context"
@@ -18,11 +16,15 @@ import (
 	"github.com/cilium/ebpf/rlimit"
 )
 
-func main() {
-	// Allow the current process to lock memory for eBPF resources.
+// Allow the simulator process to to lock memory for eBPF resources
+func RemoveMemlock() {
+
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func Run() {
 
 	// Load eBPF collection spec
 	spec, err := loadProbe()
