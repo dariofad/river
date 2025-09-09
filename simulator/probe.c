@@ -21,7 +21,7 @@ volatile const __u32 MAX_CYCLES;
 // signals
 const __u16 SIGKILL = 9;
 
-// maps
+// d_rel map
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
 	__type(key, __u32);
@@ -48,16 +48,23 @@ int uprobe_drel_probe() {
 		// read d_rel from input trace
 		__u64 *d_rel = bpf_map_lookup_elem(&d_rel_map, &d_rel_key);
 		if (!d_rel){
-			bpf_printk("Error reading d_rel_p");
+			bpf_printk("Error reading d_rel");
 			return 0;
 		}
-		bpf_printk("d_rel at idx %u: %llu", d_rel_key, *d_rel);
+		bpf_printk("d_rel at idx %d: %llu", d_rel_key, *d_rel);
 		// overwrite d_rel in userspace memory
 		long err = bpf_probe_write_user((void *)(ADDR_BASE+ADDR_OBJ+ADDR_DREL), d_rel, 8);
 		if (err != 0) {
 			bpf_printk("UWRITE FAILED (d_rel_i): %ld\n", err);
 			return 0;
-		}		
+		}	
+		__u64 buf = 0;
+		// check value written in userspace
+		if (bpf_probe_read_user(&buf, sizeof(buf), (void *)(ADDR_BASE+ADDR_OBJ+ADDR_DREL)) == 0) {
+			bpf_printk("Read after write: %llu\n", buf);
+		} else {
+			bpf_printk("Failed to read");
+		}	
 	}
 
 	return 0;
