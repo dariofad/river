@@ -2,14 +2,18 @@ package simulator
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"os/exec"
 	"strconv"
 
+	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
 )
+
+var VERBOSE bool
 
 // Allow the simulator process to to lock memory for eBPF resources
 func RemoveMemlock() {
@@ -119,25 +123,30 @@ func Run(data map[string]interface{}) {
 	}
 	defer probeObjs.Close()
 
-	// Inject datapoints
-	// todo: use correct datapoints instead of testing values
-	// todo: reduce map creation using a batch insertion
-	for i := 0; i < int(MAX_CYCLES); i++ {
-		mkey := uint32(i)
-		mval := float64(i)
-		log.Println(mval)
-		if err := probeObjs.D_relMap.Put(&mkey, &mval); err != nil {
-			log.Printf("Cannot put value into d_rel map, err: %v", err)
-			return
-		}
+	// Inject datapoints (with batch update)
+	keys := make([]uint32, MAX_CYCLES)
+	var tmpKey uint32 = 0
+	for tmpKey < MAX_CYCLES {
+		keys[tmpKey] = tmpKey
+		tmpKey += 1
 	}
+	values, err := getDRel(data, MAX_CYCLES)
+	if err != nil {
+		return
+	}
+	if VERBOSE {
+		log.Println("d_rel values:", values)
+	}
+	// Perform batch update
+	probeObjs.D_relMap.BatchUpdate(keys, values, &ebpf.BatchOptions{
+		Flags: uint64(ebpf.UpdateAny),
+	})
 
-	// Open an ELF binary and read its symbols
+	// Open executable and link the uproble
 	ex, err := link.OpenExecutable(binPath)
 	if err != nil {
 		log.Fatalf("opening executable: %s", err)
 	}
-
 	// Link the uprobe
 	uprobe, err := ex.Uprobe(symbol, probeObjs.UprobeDrelProbe, &link.UprobeOptions{Offset: OFFSET})
 	if err != nil {
@@ -155,4 +164,25 @@ func Run(data map[string]interface{}) {
 	if err != nil {
 		log.Printf("Simulation ended (%s)", err)
 	}
+}
+
+// Extract d_rel values from the simulation raw data
+func getDRel(data map[string]interface{}, dataPoints uint32) ([]float64, error) {
+
+	values := make([]float64, dataPoints)
+	rawVect, ok := data["d_rel"].([]interface{})
+	if ok {
+		log.Printf("Found %T datapoints", rawVect)
+		for pos, rawVal := range rawVect {
+			floatVal, ok := rawVal.(float64)
+			if !ok {
+				return nil, errors.New("Cannot convert value to float64")
+			}
+			values[pos] = floatVal
+		}
+	} else {
+		log.Print("Cannot extract the d_rel values")
+		return nil, errors.New("Cannot find d_rel in map")
+	}
+	return values, nil
 }

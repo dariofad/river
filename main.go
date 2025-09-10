@@ -30,6 +30,7 @@ func parseCmdLineOptions() {
 	flag.Parse()
 	VERBOSE = *verbP
 	server.VERBOSE = VERBOSE
+	simulator.VERBOSE = VERBOSE
 
 }
 
