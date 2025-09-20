@@ -21,6 +21,7 @@ Install a compatible version of the following tools:
 - `go` 1.24.3
 - `llvm-strip` 18.1.3
 - `llvm` 18.1.3
+- clang
 
 After, install:
 
