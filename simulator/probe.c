@@ -16,6 +16,7 @@ volatile const __u64 ADDR_VEGO;
 // timing
 volatile const __u32 MINOR_TO_MAJOR_RATIO;
 __u32 minor_step = 0;
+__u32 IS_MAJOR = 0;
 __u32 cycle = 0;
 volatile const __u32 MAX_CYCLES;
 
@@ -49,6 +50,7 @@ struct {
 // structs and ringbuffers for online monitoring
 struct record {
 	__u32 time;
+	__u32 filler;
 	__u64 a_ego;
 	__u64 v_ego;
 };
@@ -192,10 +194,11 @@ SEC("uretprobe/drel_probe")
 int uprobe_drel_probe() {
 
 	// determine if the call is part of a major cycle
-	bool isMajor = 0;
 	if (minor_step % MINOR_TO_MAJOR_RATIO == 0){
-		isMajor = 1;
+		IS_MAJOR = 1;
 		cycle++;		
+	} else {
+		IS_MAJOR = 0;
 	}
 	minor_step++;	
 	if (cycle > MAX_CYCLES) {
@@ -203,7 +206,7 @@ int uprobe_drel_probe() {
 		bpf_send_signal(SIGKILL);
 		return 0;
 	}
-        if (isMajor) {
+        if (IS_MAJOR) {
 		__u32 d_rel_key = cycle - 1;
 		// 1. read d_rel from input trace
 		__u64 *d_rel_noise = bpf_map_lookup_elem(&d_rel_noise_map, &d_rel_key);
@@ -271,11 +274,13 @@ static int write_to_rb(__u32 time, __u64 a_ego, __u64 v_ego) {
 
 	// init data record
 	data->time = time;
+	data->filler = 0;
 	data->a_ego = a_ego;
 	data->v_ego = v_ego;	
 
 	// commit to the rb
 	bpf_ringbuf_submit(data, BPF_RB_NO_WAKEUP);
+	//bpf_printk("Record committed to the ring buffer");	
     return 0;
 }
 
@@ -283,6 +288,8 @@ static int write_to_rb(__u32 time, __u64 a_ego, __u64 v_ego) {
 SEC("uretprobe/output_probe")
 int uprobe_output_probe() {
 
+	if (!IS_MAJOR)
+		return 0;
         __u32 time = cycle - 1;			
 	__u64 a_ego = 0;
 	// read a_ego
