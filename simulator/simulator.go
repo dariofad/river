@@ -332,7 +332,7 @@ func writeToRedis(ctx context.Context, redisClient *redis.Client, simulationKey 
 		log.Printf("Failed to write batch for simulation: %v", err)
 		return err
 	} else {
-		log.Printf("Uploaded to Redis %d records:", n)
+		log.Printf("Uploaded to Redis %d records", n)
 	}
 
 	return nil

@@ -16,5 +16,7 @@ type ModelRecord struct {
 }
 
 func ModelRecordToCSVString(record ModelRecord) string {
-	return strconv.FormatFloat(record.AEgo, 'f', 5, 64) + "," + strconv.FormatFloat(record.VEgo, 'f', 5, 64)
+	return strconv.Itoa(int(record.Time)) +
+		"," + strconv.FormatFloat(record.AEgo, 'f', 5, 64) +
+		"," + strconv.FormatFloat(record.VEgo, 'f', 5, 64)
 }
