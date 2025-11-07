@@ -6,12 +6,24 @@
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
 
-volatile const __u16 MODE; // 0: OFFLINE, 1: ONLINE
+// interactivity
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, u32);
+    __type(value, u16);
+} interactive_map SEC(".maps");
+static __u16 get_interactive(void) {
+    u32 key = 0;
+    __u16 *val = bpf_map_lookup_elem(&interactive_map, &key);
+    return val ? *val : 0;
+}
 
-// spec values
-volatile const __u64 ADDR_DREL;
-volatile const __u64 ADDR_AEGO;
-volatile const __u64 ADDR_VEGO;
+volatile const __u32 NOF_WISIGNALS;
+volatile const __u32 NOF_RISIGNALS;
+volatile const __u32 NOF_ROSIGNALS;
+
+const __u32 MAX_NOF_SIGNALS = 16;
 
 // timing
 volatile const __u32 MINOR_TO_MAJOR_RATIO;
@@ -21,44 +33,52 @@ __u32 time = 0;
 __u32 log_counter = 0;
 volatile const __u32 MAX_CYCLES;
 
+// -----------------------------------------------------------------------
+// MAPS TO STORE SIGNALS
+// single trace
+struct m_signal {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __type(key, __u32);
+    __type(value, __u64);        // use __u64 to store an ieee754 value
+    __uint(max_entries, 4096);      // NB adjust before simulating the model
+};
+// traces by signal key
+struct m_signals {
+    __uint(type, BPF_MAP_TYPE_HASH_OF_MAPS);
+    __type(key, __u32);
+    __type(value, __u32);  // FD
+    __uint(max_entries, 4096);
+    __array(values, struct m_signal);
+} tracee_map SEC(".maps");
+// addresses by signal key
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__type(key, __u32);
+	__type(value, __u64);
+	__uint(max_entries, 4096);	  // NB adjust before simulating the model
+} address_map SEC(".maps");
+// types by signal key (0 write_i, 1 read_i, 2 read_o)
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__type(key, __u32);
+	__type(value, __u32);
+	__uint(max_entries, 4096);	  // NB adjust before simulating the model
+} type_map SEC(".maps");
+
+// -----------------------------------------------------------------------
+// 
 // signals
 const __u16 SIGKILL = 9;
 
-// d_rel_noise map
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, __u32);
-	__type(value, __u64); // use __u64 to store an ieee754 value
-	__uint(max_entries, 1);		
-} d_rel_noise_map SEC(".maps");
-
-// a_ego map
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, __u32);
-	__type(value, __u64); // use __u64 to store an ieee754 value
-	__uint(max_entries, 1);		
-} a_ego_map SEC(".maps");
-
-// v_ego map
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, __u32);
-	__type(value, __u64); // use __u64 to store an ieee754 value
-	__uint(max_entries, 1);	
-} v_ego_map SEC(".maps");
-
-// structs and ringbuffers for online monitoring
-struct record {
+struct out_record {
 	__u32 time;
 	__u32 filler;
-	__u64 a_ego;
-	__u64 v_ego;
+        __u64 values[];
 };
 struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
-	__uint(max_entries, 32 * 4096); // must be a power of 2 and a multiple of 4096 (memory page size)
-} record_rb SEC(".maps");
+	__uint(max_entries, 128 * 4096); // must be a power of 2 and a multiple of 4096 (memory page size)
+} out_rb SEC(".maps");
 
 static __always_inline int count_leading_left_zeroes(__u64 n) {
 
@@ -191,10 +211,10 @@ static __u64 ieee754_sub(__u64 a, __u64 b) {
 	return ieee754_add(a, b);
 }
 
-SEC("uretprobe/drel_probe")
-int uprobe_drel_probe() {
+SEC("uretprobe/timer")
+int uprobe_timer() {
 
-	// determine if the call is part of a major cycle
+	// determine if the current cyclic is a major step
 	if (minor_step % MINOR_TO_MAJOR_RATIO == 0){
 		IS_MAJOR = 1;
 		time++;		
@@ -208,120 +228,160 @@ int uprobe_drel_probe() {
 		bpf_send_signal(SIGKILL);
 		return 0;
 	}
-        if (IS_MAJOR) {
-		__u32 d_rel_key = time - 1;
-		// 1. read d_rel from input trace
-		__u64 *d_rel_noise = bpf_map_lookup_elem(&d_rel_noise_map, &d_rel_key);
-		if (!d_rel_noise){
-			bpf_printk("Error reading d_rel_noise");
-			return -1;
-		}
-		
-		// 2. read d_rel from user space
-		__u64 d_rel = 0;
-		if (bpf_probe_read_user(&d_rel, sizeof(d_rel), (void *)(ADDR_DREL)) == 0) {
-			bpf_printk("d_rel from uspace: %llu", d_rel);
-		} else {
-			bpf_printk("Failed to read");
-			return -1;
-		}
-
-		// 3. add noise to d_rel
-		d_rel = ieee754_add(d_rel, *d_rel_noise);
-		bpf_printk("d_rel_noise: %llu", *d_rel_noise);		
-		bpf_printk("new d_rel: %llu", d_rel);		
-
-		// 4. overwrite d_rel value in user space
-		long err = bpf_probe_write_user((void *)(ADDR_DREL), &d_rel, 8);
-		if (err != 0) {
-			bpf_printk("UWRITE FAILED (d_rel_i): %ld", err);
-			return -1;
-		}	
-	}
-
 	return 0;
 }
 
-static int write_to_array(__u32 time, __u64 a_ego, __u64 v_ego) {
+static inline int read_signals(__u32 nof_signals, __u32 key_offset) {
 
-	// write it to the map
-	int err = bpf_map_update_elem(&a_ego_map, &time, &a_ego, BPF_ANY);
-	if (err != 0) {
-		bpf_printk("Cannot write a_ego to its map");
+	if (nof_signals > MAX_NOF_SIGNALS){
+		bpf_printk("Too many signals to read");
 		return -1;
-	} else {
-		bpf_printk("Written a_ego: %llu", a_ego);
-	}
-	
-	// write it to the map
-	err = bpf_map_update_elem(&v_ego_map, &time, &v_ego, BPF_ANY);
-	if (err != 0) {
-		bpf_printk("Cannot write v_ego to its map");
-		return -1;
-	} else {
-		bpf_printk("Written v_ego: %llu\n", v_ego);
 	}
 
-	return 0;
+	// determine the correct simulation time
+       __u32 actual_time = time - 1;
+       bpf_printk("Actual time %d:", actual_time);
+       __u64 values[16];
+
+       for (__u32 k = 0; k < nof_signals; k++){
+	       __u32 key = k + key_offset;
+	       // get the signal address
+	       __u64 *address = bpf_map_lookup_elem(&address_map, &key);
+	       if (!address){
+		       bpf_printk("ERR retrieving address from address_map");
+		       return -1;
+	       }
+	       // read the signal from user space
+	       __u64 signal = 0;
+	       if (bpf_probe_read_user(&signal, sizeof(signal), (void *)(*address)) == 0) {
+		       bpf_printk("Signal %d from user space: %llu", key, signal);
+	       } else {
+		       bpf_printk("Failed to read signal");
+		       return -1;
+	       }
+	       // get the signal trace
+	       bpf_printk("Retrieving trace for signal %d", key);
+	       struct m_signal *sign_trace = (struct m_signal *)bpf_map_lookup_elem(&tracee_map, &key);
+	       if (sign_trace == NULL){
+		       bpf_printk("ERR retrieving sign_trace map");			
+		       return -1;
+	       }
+	       // update the signal trace
+	       int err = bpf_map_update_elem(sign_trace, &actual_time, &signal, BPF_ANY);
+	       if (err != 0) {
+		       bpf_printk("Cannot write signal %d to trace", key);
+		       return -1;
+	       } else {
+		       bpf_printk("Signal %d written to trace, value: %llu", key, signal);
+	       }
+	       values[k] = signal;
+       }
+
+       __u16 INTERACTIVE = get_interactive();
+       struct out_record *r;
+       if (INTERACTIVE == 1){
+	       // reserve memory in the ring buffer
+	       r = bpf_ringbuf_reserve(&out_rb, sizeof(struct out_record) + nof_signals * sizeof(__u64), 0);
+	       if (r == NULL) {
+		       bpf_printk("Failed to reserve rb memory");
+		       return -1;
+	       }
+	       r->time = actual_time;
+	       r->filler = 0;
+	       // it is implemented this way since it avoids automatic
+	       // rewriting and consequent program rejection by the
+	       // verifier
+	       for (__u32 k = 0; k < MAX_NOF_SIGNALS; k++){
+		       if (k < nof_signals)
+			       r->values[k] = values[k];
+	       }
+	       // commit to the rb
+	       bpf_ringbuf_submit(r, BPF_RB_NO_WAKEUP);
+	       bpf_printk("Record committed to the ring buffer");
+      }
+      return 0;	
 }
 
-static int write_to_rb(__u32 time, __u64 a_ego, __u64 v_ego) {
+SEC("uretprobe/read_i")
+int uprobe_read_i() {
 
-	// reserve memory in the ring buffer
-	struct record *data = bpf_ringbuf_reserve(&record_rb, sizeof(struct record), 0);
-	if (data == NULL) {
-		bpf_printk("Failed to reserve rb memory");
-		return -1;
-	}
-
-	// init data record
-	data->time = time;
-	data->filler = 0;
-	data->a_ego = a_ego;
-	data->v_ego = v_ego;	
-
-	// commit to the rb
-	bpf_ringbuf_submit(data, BPF_RB_NO_WAKEUP);
-	//bpf_printk("Record committed to the ring buffer");
-	return 0;
-}
-
-// todo test
-SEC("uretprobe/output_probe")
-int uprobe_output_probe() {
-
-	if (!IS_MAJOR)
+        if (!IS_MAJOR){ // skip the rest of the program if not major step
 		return 0;
-        __u32 actual_time =  time- 1;			
-	__u64 a_ego = 0;
-	// read a_ego
-	if (bpf_probe_read_user(&a_ego, sizeof(a_ego), (void *)(ADDR_AEGO)) == 0) {
-		bpf_printk("a_ego: %llu", a_ego);
 	} else {
-		bpf_printk("Failed to read a_ego");
-		return -1;
-	}
-
-	__u64 v_ego = 0;
-	// read v_ego
-	if (bpf_probe_read_user(&v_ego, sizeof(v_ego), (void *)(ADDR_VEGO)) == 0) {
-		bpf_printk("v_ego: %llu", v_ego);
-	} else {
-		bpf_printk("Failed to read v_ego");
-		return -1;
-	}
-
-	log_counter += 1;
-	// write to the proper map based on the mode
-	if (MODE == 0){
-		// OFFLINE
-		return write_to_array(actual_time, a_ego, v_ego);
-	} else {
-		// ONLINE
-		return write_to_rb(actual_time, a_ego, v_ego);
-		
+		return read_signals(NOF_RISIGNALS, NOF_WISIGNALS);
 	}
 }
 
+SEC("uretprobe/read_o")
+int uprobe_read_o() {
+
+        if (!IS_MAJOR){ // skip the rest of the program if not major step
+		return 0;
+	} else {
+		log_counter += 1;
+		return read_signals(NOF_ROSIGNALS, NOF_WISIGNALS + NOF_RISIGNALS);
+	}
+}
+
+SEC("uretprobe/write_i")
+int uprobe_write_i() {
+
+        if (!IS_MAJOR) // skip the rest of the program if not major step
+		return 0;
+
+	if (NOF_WISIGNALS > MAX_NOF_SIGNALS){
+		bpf_printk("Too many signals to write");
+		return -1;
+	}
+
+	for (__u32 s = 0; s < NOF_WISIGNALS; s++){
+		// get the signal trace
+		__u32 key = s;
+		bpf_printk("Retrieving perturbation trace for signal %d", key);
+		void *sign_trace = bpf_map_lookup_elem(&tracee_map, &key);
+		if (!sign_trace){
+			bpf_printk("ERR retrieving sign_trace map");
+			return -1;
+		}
+		
+		// read the perturbation from the input trace
+		__u32 actual_time = time - 1;
+		__u64 *pert = bpf_map_lookup_elem(sign_trace, &actual_time);
+		if (!pert){
+			bpf_printk("Error reading signal %d pert", key);
+			return -1;
+		} else {
+			bpf_printk("Signal %d perturbation: %llu", key, *pert);
+		}
+
+		// get the signal address
+		__u64 *address = bpf_map_lookup_elem(&address_map, &key);
+		if (!address){
+			bpf_printk("ERR retrieving address from address_map");
+			return -1;
+		}
+		
+		// read the signal from the user space
+		__u64 sign = 0;
+		if (bpf_probe_read_user(&sign, sizeof(sign), (void *)(*address)) == 0) {
+			bpf_printk("Signal %d from user space: %llu", key, sign);
+		} else {
+			bpf_printk("Failed to read signal %d from user space", key);
+			return -1;
+		}
+
+		// add perturbation to signal
+		sign = ieee754_add(sign, *pert);
+		bpf_printk("New value after perturbation: %llu", sign);
+
+		// overwrite signal in user space
+		long err = bpf_probe_write_user((void *)(address), &sign, 8);
+		if (err != 0) {
+			bpf_printk("Failed to overwrite signal %k, err: %ld", key, err);
+			return -1;
+		}
+	}
+	return 0;
+}
 
 char __license[] SEC("license") = "Dual MIT/GPL";

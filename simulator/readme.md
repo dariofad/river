@@ -1,25 +1,48 @@
 # Setup
 
-- create a local file named `.BIN_PATH` containing the path of the
-  `DualACC` binary you just built (e.g.,
-  `/home/user/sim2cpp/DualACCC/dualACC`)
-- create a local file named `.BIN_SYM` containing the mangled name of
-  the `egoCar::step()` function of the `DualACC` (e.g.,
-  `_ZN6egoCar4stepEv`), you can get the name by looking at the binary
-  symbols with `objdump -t dualACC`
-- create a local file named `.ADDRS.json` listing the base addresses
-  we are monitoring, it should look like the following
-```
+Configure a local file `config.json` with all the information required
+to run the simulation. An example based on the `DualACC` model
+follows.
+
+```json
 {
-    "ADDR_DREL": "55555556e350",
-    "ADDR_AEGO": "55555556e368",
-    "ADDR_VEGO": "55555556e360",
-    "OFFSET_STEP": "418",
-    "OFFSET_MAIN": "188",
-    "MINOR_TO_MAJOR_RATIO": "3"
+	"MODEL_PATH": "path_to_model/binary",
+	"TIMER_SYMBOL": "_ZN6egoCar4stepEv",
+    "MINOR_TO_MAJOR_RATIO": "3",
+    "NOF_CYCLES": "801",
+    "WRITE_TIMING_I": {
+		"SYMBOL": "_ZN6egoCar4stepEv",
+		"OFFSET":  "418",
+		"SIGNALS": [
+			{
+				"SIGN_NAME": "DREL",
+				"SIGN_TYPE": "float64",
+				"SIGN_ADDR": "55555556e350"
+			}
+		]
+		}, 
+    "READ_TIMING_I": null,
+    "READ_TIMING_O": {
+		"SYMBOL": "_ZN6egoCar4stepEv",
+		"OFFSET":  "188",
+		"SIGNALS": [
+			{
+				"SIGN_NAME": "AEGO",
+				"SIGN_TYPE": "float64",
+				"SIGN_ADDR": "55555556e368"
+			},
+			{
+				"SIGN_NAME": "VEGO",
+				"SIGN_TYPE": "float64",
+				"SIGN_ADDR": "55555556e360"
+			}
+		]
+    }
 }
 ```
-To get obtain these addresses you can use GDB:
+
+Use GDB to obtain the correct addresses and offset. Follow these
+steps:
 1. Disable ASLR
 2. Go to the `DualACC` folder
 3. Run `gdb dualACC`, then follow the next steps

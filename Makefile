@@ -25,8 +25,13 @@ start_redis:
 	docker start redis
 
 run: build start_redis
-	@echo "Starting Redis container..."
-	sleep 3
+	@if docker ps -a --filter "name=$(CONTAINER_NAME)" --format "{{.ID}}" | grep -q .; then \
+		echo "-> container $(CONTAINER_NAME) is already running or exists. Skipping creation."; \
+	else \
+		echo "-> creating and running container $(CONTAINER_NAME)..."; \
+		docker run -d --name $(CONTAINER_NAME) $(IMAGE_NAME); \
+		sleep 3; \
+	fi
 	@sudo ./$(GO_MODULE)
 
 clean:

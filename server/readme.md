@@ -1,7 +1,6 @@
 # Notes
 
-The server bridges a Matlab client application and a Go simulator via
-TCP/IP.
+The server bridges a client application and a Go simulator via TCP/IP.
 
 It can be executed within a VM, provided that a host-only network is
 created.

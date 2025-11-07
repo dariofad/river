@@ -7,15 +7,18 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
+	"github.com/dariofad/ebpf_simulator/my_types"
 	"github.com/dariofad/ebpf_simulator/simulator"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
 var VERBOSE bool
+var SERVER_BUSY sync.Mutex
 
-func StartServer(port uint16) {
+func StartService(port uint16, srv my_types.Service) {
 
 	// start tcp server
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(int(port)))
@@ -23,24 +26,30 @@ func StartServer(port uint16) {
 		log.Fatal("Server cannot setup the listener")
 	}
 	defer listener.Close()
-	log.Println("Server Listening on port", strconv.Itoa(int(port)))
+	log.Printf("Server listening (%s mode, %d port)", srv.String(), int(port))
 
 	// handle connections
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Print("Error accepting connection", err)
+			log.Print("%s server accepted connection, %s", srv.String(), err)
 			continue
 		}
-		log.Println("[->] Connection accepted")
+		log.Printf("[->] %s server accepted connection", srv.String())
 
-		go handleConnection(conn)
+		switch srv {
+		case my_types.Monitoring:
+			handleMonitoring(conn)
+		case my_types.Falsification:
+			handleFalsification(conn)
+		case my_types.StatePerturbation:
+			handleStatePerturbation(conn)
+		case my_types.SignalPerturbation:
+			handleSignalPerturbation(conn)
+		default:
+			log.Fatalf("Error Cannot start non-existing server mode")
+		}
 	}
-}
-
-// todo implement
-func StopServer() {
-	// todo evaluate changes to the StartServer function
 }
 
 func timeTrack(start time.Time, name string) {
@@ -110,7 +119,7 @@ func deserialize(rawData []byte) (map[string]interface{}, error) {
 }
 
 // Serializes a result using MessagePack
-func serialize(result simulator.Result) (*bytes.Buffer, error) {
+func serialize(result my_types.OutputTrace) (*bytes.Buffer, error) {
 
 	defer timeTrack(time.Now(), "serialize()")
 
@@ -152,17 +161,13 @@ func writeResponse(response *bytes.Buffer, conn net.Conn) error {
 	return nil
 }
 
-func handleConnection(conn net.Conn) {
+// Starts a simulation and streams the output trace to a redis db
+func handleMonitoring(conn net.Conn) {
 
 	defer conn.Close()
-	transferDuration := 15 * time.Second
 
-	// set read deadline
-	err := conn.SetReadDeadline(time.Now().Add(transferDuration))
-	if err != nil {
-		log.Println("ReadDeadline set error:", err)
-		return
-	}
+	lockServer()
+	defer unlockServer()
 
 	// read raw data
 	dataLen, rawData, err := getData(conn)
@@ -172,38 +177,108 @@ func handleConnection(conn net.Conn) {
 	_ = dataLen
 
 	// deserialize data
-	data, err := deserialize(rawData)
-	if err != nil {
-		return
-	}
-	_ = data
-
-	// ... RUN THE SIMULATION WITH eBPF HERE...
-	var result *simulator.Result
-	result, err = simulator.Run(data)
-	if err != nil {
-		log.Println("Simulation resulted in an err:", err)
-		return
-	}
-	log.Println("Simulation result created")
-	if VERBOSE {
-		log.Println(*result)
-	}
-
-	// serialize result
-	response, err := serialize(*result)
+	rawTrajectory, err := deserialize(rawData)
 	if err != nil {
 		return
 	}
 
-	// set write deadline
-	err = conn.SetWriteDeadline(time.Now().Add(transferDuration))
+	// start non-interactive monitoring
+	_, err = simulator.Start(my_types.Monitoring, rawTrajectory)
 	if err != nil {
-		log.Println("WriteDeadline set error:", err)
+		log.Println("Cannot handle monitoring task:", err)
+		return
+	} else {
+		log.Println("Monitoring started")
+		sendSimulationStartedAck(conn)
+	}
+}
+
+// Starts a falsification and sends the result back to the client
+func handleFalsification(conn net.Conn) {
+
+	defer conn.Close()
+
+	lockServer()
+	defer unlockServer()
+
+	// read raw data
+	dataLen, rawData, err := getData(conn)
+	if err != nil {
+		return
+	}
+	_ = dataLen
+
+	// deserialize data
+	rawTrajectory, err := deserialize(rawData)
+	if err != nil {
 		return
 	}
 
-	// write the response
-	err = writeResponse(response, conn)
-	_ = err
+	// start non-interactive falsification
+	outTrace, err := simulator.Start(my_types.Falsification, rawTrajectory)
+	if err != nil {
+		log.Println("Cannot handle falsification task:", err)
+		return
+	} else {
+		log.Println("Falsification started")
+		serializedOutputTrace, err := serialize(*outTrace)
+		if err != nil {
+			log.Printf("Falsification failed: %v", err)
+			return
+		} else {
+			err = writeResponse(serializedOutputTrace, conn)
+			if err != nil {
+				// log connection write error
+				log.Println("Cannot send response to the client")
+			}
+		}
+	}
+}
+
+// todo: implement
+func handleStatePerturbation(conn net.Conn) {
+
+	defer conn.Close()
+	lockServer()
+	defer unlockServer()
+}
+
+// todo: implement
+func handleSignalPerturbation(conn net.Conn) {
+
+	defer conn.Close()
+	lockServer()
+	defer unlockServer()
+}
+
+func lockServer() {
+
+	log.Print("Trying to lock the server...")
+	SERVER_BUSY.Lock()
+	log.Print("Server locked")
+}
+
+func unlockServer() {
+
+	log.Print("Trying to unlock the server...")
+	SERVER_BUSY.Unlock()
+	log.Print("Server unlocked")
+}
+
+func setReadDeadline(conn net.Conn, seconds uint32) error {
+
+	return conn.SetReadDeadline(time.Now().Add(time.Duration(seconds)))
+}
+
+func setWriteDeadline(conn net.Conn, seconds uint32) error {
+
+	return conn.SetWriteDeadline(time.Now().Add(time.Duration(seconds)))
+}
+
+func sendSimulationStartedAck(conn net.Conn) {
+
+	_, err := conn.Write([]byte("Simulation correctly started"))
+	if err != nil {
+		log.Print("Error writing response", err)
+	}
 }

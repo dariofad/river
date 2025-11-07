@@ -6,22 +6,36 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
+	"github.com/dariofad/ebpf_simulator/my_types"
 	"github.com/dariofad/ebpf_simulator/server"
 	"github.com/dariofad/ebpf_simulator/simulator"
 )
 
 var VERBOSE bool
-var PORT uint16 = 8080
+var MONITORING_PORT uint16 = 8080
+var FALSIFICATION_PORT uint16 = 8081
+var STATE_PERTURBATION_PORT uint16 = 8082
+var SIGNAL_PERTURBATION_PORT uint16 = 8083
 
 func main() {
 
+	// configure the server
 	parseCmdLineOptions()
 	configureLogger()
 	simulator.RemoveMemlock()
-	server.StartServer(PORT)
-	// todo handle requests to stop the server
+	// start the services
+	go server.StartService(MONITORING_PORT, my_types.Monitoring)
+	go server.StartService(FALSIFICATION_PORT, my_types.Falsification)
+	go server.StartService(STATE_PERTURBATION_PORT, my_types.StatePerturbation)
+	go server.StartService(SIGNAL_PERTURBATION_PORT, my_types.SignalPerturbation)
+	// todo: add a service to stop unbounded simulations
+	// wait indefinitely
+	var wg sync.WaitGroup
+	wg.Add(1)
+	wg.Wait()
 }
 
 func parseCmdLineOptions() {
