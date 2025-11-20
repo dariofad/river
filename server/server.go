@@ -247,8 +247,32 @@ func handleStatePerturbation(conn net.Conn) {
 func handleSignalPerturbation(conn net.Conn) {
 
 	defer conn.Close()
+
 	lockServer()
 	defer unlockServer()
+
+	// // read raw data
+	// dataLen, rawData, err := getData(conn)
+	// if err != nil {
+	// 	return
+	// }
+	// _ = dataLen
+
+	// // deserialize data
+	// rawTrajectory, err := deserialize(rawData)
+	// if err != nil {
+	// 	return
+	// }
+
+	// start non-interactive monitoring
+	_, err := simulator.Start(my_types.SignalPerturbation, nil)
+	if err != nil {
+		log.Println("Cannot handle signal perturbation task:", err)
+		return
+	} else {
+		log.Println("Signal Perturbation mode ended")
+		sendSimulationStartedAck(conn)
+	}
 }
 
 func lockServer() {

@@ -53,6 +53,7 @@ func setCycles(spec *ebpf.CollectionSpec, simData my_types.SimFormat) error {
 		log.Printf("Error setting MinorToMajorRation in spec: %s", err)
 		return err
 	}
+	log.Printf("Minor_to_major_ratio :%d", RATIO)
 
 	// set cycles
 	cycles, err := strconv.ParseUint(simData.NofCycles, 10, 64) // base 10
@@ -65,6 +66,7 @@ func setCycles(spec *ebpf.CollectionSpec, simData my_types.SimFormat) error {
 		log.Printf("Error setting Cycles in spec: %s", err)
 		return err
 	}
+	log.Printf("Cycles :%d", CYCLES)
 
 	return nil
 }
@@ -384,7 +386,7 @@ func Start(simulationMode my_types.Service, rawTrajectory map[string]interface{}
 	}
 
 	// collect or stream output trace
-	if simulationMode == my_types.Monitoring {
+	if simulationMode == my_types.Monitoring || simulationMode == my_types.SignalPerturbation {
 		// Create the Redis client
 		redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
 		// Get the simulation id
