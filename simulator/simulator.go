@@ -91,13 +91,13 @@ func extractTrajectory(rawTrajectory map[string]interface{}, simData my_types.Si
 			for t, rawVal := range rawTrajectory {
 				val, ok := rawVal.(float64)
 				if !ok {
-					log.Print("Cannot convert to float trajectory value %v", rawVal)
+					log.Printf("Cannot convert to float trajectory value %v", rawVal)
 					return nil, errors.New("Cannot convert trajectory value to float64")
 				}
 				vals[t] = val
 			}
 		} else {
-			log.Print("Cannot extract raw trajectory for signal %s", signal.SignName)
+			log.Printf("Cannot extract raw trajectory for signal %s", signal.SignName)
 			return nil, errors.New("Trajectory extraction error")
 		}
 		trajectory[signal.SignName] = vals

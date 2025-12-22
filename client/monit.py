@@ -4,17 +4,21 @@ import socket
 import sys
 import argparse
 from typing import Sized
-import numpy as np
 import msgpack
+import demos_config
 
 PORT = 8080
+HOST = None
+MODEL = None
+CONFIG = None
 
-def srv_connect(host: str) -> bytearray:
+def srv_connect(host: str, model: int, config: int) -> bytearray:
 
-    # create a test trajectory and serialize it with msgpack
-    single_trajectory = np.array([float(i)/1000 for i in range(801)], dtype=np.float64)
-    trajectory = dict()
-    trajectory["DREL"] = single_trajectory.tolist()
+    # get the model-configuration-based trajectory 
+    demo_fname = f"M{model}_C{config}_trajectory"
+    demo_func = getattr(demos_config, demo_fname)
+    trajectory = demo_func()
+    # serialize the trajectory with msgpack
     payload = msgpack.packb(trajectory)
 
     try:
@@ -47,10 +51,19 @@ def main():
         description="Connect to the simulation server via TCP",
     )
     parser.add_argument('host', help='Server hostname or IP address')
+    parser.add_argument('model', help='Model id')
+    parser.add_argument('config', help='Config id')        
     
     args = parser.parse_args()
+    HOST = args.host
+    MODEL = args.model
+    CONFIG = args.config
+        
+    print(f"host:\t{HOST}")
+    print(f"model:\t{MODEL}")
+    print(f"config:\t{CONFIG}")
     
-    print(srv_connect(args.host).decode('utf-8'))
+    print(srv_connect(HOST, MODEL, CONFIG).decode('utf-8'))    
 
 if __name__ == "__main__":
     main()
