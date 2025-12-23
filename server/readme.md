@@ -1,6 +1,7 @@
 # Notes
 
-The server bridges a client application and a Go simulator via TCP/IP.
+The server permits to run eBPF-controlled model simulations via
+TCP/IP.
 
 It can be executed within a VM, provided that a host-only network is
 created.
@@ -11,7 +12,7 @@ following).
 
 ## Prerequisites and build notes
 
-Get a MessagePack implementation
+1. Install MessagePack
 
 ```bash
 git clone https://github.com/msgpack/msgpack-c.git
@@ -22,20 +23,20 @@ make
 sudo make install
 ```
 
-Ensure installed libraries are available system-wide 
+2. Ensure installed libraries are available system-wide 
 
 ```bash
 echo "/local/lib" | sudo tee /etc/ld.so.conf.d/msgpack.conf
 sudo ldconfig
 ```
 
-Get MessagePack bindings for Matlab
+3. Get MessagePack bindings for Matlab
 
 ```bash
 git clone https://github.com/RandallPittmanOrSt/msgpack-matlab2.git
 ```
 
-Build the MEX file
+4. Build the MEX file
 
 ```matlab
 addpath('path-to/msgpack-matlab2');

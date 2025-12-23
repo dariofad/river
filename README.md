@@ -1,10 +1,12 @@
-# eBPF-enabled falsification
+# eBPF-based model/controller simulation
 
-This repository implements a Go TCPIP server capable of running Simulink models with online perturbation.
-This supports multiple objectives, including searching for counterexamples (i.e.,
-falsification) online, monitoring models, changing model behavior at runtime.
-
-Follow the prerequisites to reproduce.
+This repository implements a tool to execute Simulink models enabling
+monitoring, falsification (to search for counterexamples), and online
+perturbation of input signals and model state.  All the operations are
+non-intrusive thanks to eBPF, and can be performed without changing
+the model nor its source code.  To reproduce the results and the
+demos, check the instructions in the `server`, `simulator` and
+`client` folders.
 
 ## Prerequisites
 
@@ -31,13 +33,11 @@ After, install:
 
 ## Test
 
-The current version uses the `DualACC` model from this
-[repo](https://github.com/dariofad/sim2cpp) (commit: 058d589), and
-relies on the Matlab client implemented
-[here](https://github.com/shincyou0916/Falsification-for-MPCACC-model-with-eBPF).
-
-Remember to complete the additional setup as described within the
-directory `simulator `.
+The current version uses several models from this
+[repo](https://github.com/dariofad/sim2cpp) (commit: c0ce95f). See
+this other
+[repo](https://github.com/shincyou0916/Falsification-for-MPCACC-model-with-eBPF)
+for an example of a Matlab client.
 
 ### Run
 
