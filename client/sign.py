@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 
-import socket
-import sys
+from typing import Sized
 import argparse
 import demos_config
-from typing import Sized
-import numpy as np
+import json
 import msgpack
+import numpy as np
 import random
+import socket
+import sys
 import time
 
-CYCLES = 20
-SLEEP_TIME = 1
-INJECTIONS = 2
+CYCLES : int = 0
+with open("../simulator/config.json", 'r', encoding='utf-8') as file:
+        CYCLES = int(json.load(file)["NOF_CYCLES"])
+INJECTIONS : int = 0
 
 PORT = 8083
 HOST = None
@@ -44,7 +46,6 @@ def srv_connect(host: str, model: int, config: int) -> bytearray:
         response = sock.recv(64)
         print(response.decode('utf-8'))
         # Send a couple of perturbations
-        TIME_OFFSET = 0
         for ITERNO in range(INJECTIONS):
             # inject a perturbation
             PERIOD = CYCLES // 2
@@ -62,9 +63,9 @@ def srv_connect(host: str, model: int, config: int) -> bytearray:
             # wait for ack
             response = sock.recv(64)
             print(response.decode('utf-8'))
-            TIME_OFFSET += PERIOD
             # random sleep (between 1 and 6 seconds)
-            time.sleep(random.randint(1, PERIOD // 2))
+            if ITERNO + 1 != INJECTIONS:
+                time.sleep(random.randint(1, PERIOD // 2))
         # wait for final response
         response = sock.recv(64)        
         # Close the socket
@@ -93,9 +94,13 @@ def main():
     print(f"host:\t{HOST}")
     print(f"model:\t{MODEL}")
     print(f"config:\t{CONFIG}")
+
+    global INJECTIONS
+    INJECTIONS = 2 if int(MODEL) == 2 else 1
+    print(f"cycles:\t{CYCLES}")
+    print(f"injections:\t{INJECTIONS}")
     
     result = srv_connect(HOST, MODEL, CONFIG)
-
     print(result.decode('utf-8'))
 
 if __name__ == "__main__":

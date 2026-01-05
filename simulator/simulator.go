@@ -669,29 +669,55 @@ func Start(
 	return
 }
 
+func customConversion(rawVal interface{}) (uint32, bool) {
+
+	var val uint32
+	val, ok := rawVal.(uint32)
+	if ok {
+		return val, true
+	} else {
+		_v, ok := rawVal.(uint16)
+		if ok {
+			return uint32(_v), true
+		} else {
+			_v, ok := rawVal.(uint8)
+			if ok {
+				return uint32(_v), true
+			}
+		}
+	}
+	vali, ok := rawVal.(int32)
+	if ok {
+		return uint32(vali), true
+	} else {
+		_v, ok := rawVal.(int16)
+		if ok {
+			return uint32(_v), true
+		} else {
+			_v, ok := rawVal.(int8)
+			if ok {
+				return uint32(_v), true
+			}
+		}
+	}
+
+	log.Printf("Cannot convert to integer time value %v", rawVal)
+	return 0, false
+
+}
+
 func extractPerturbationRecords(data map[string]interface{}, simData my_types.SimFormat) ([]my_types.ModelRecord, error) {
 
 	// extract time
 	timeVals := make([]uint32, 0)
 	if rawTime, ok := data["time"].([]interface{}); ok {
 		for _, rawVal := range rawTime {
-			var val int32
-			val, ok := rawVal.(int32)
+			var val uint32
+			val, ok := customConversion(rawVal)
 			if !ok {
-				_v, ok := rawVal.(int16)
-				if !ok {
-					_v, ok := rawVal.(int8)
-					if !ok {
-						log.Printf("Cannot convert to integer time value %v", rawVal)
-						return nil, errors.New("Cannot convert perturbation time value to integer")
-					} else {
-						val = int32(_v)
-					}
-				} else {
-					val = int32(_v)
-				}
+				return nil, errors.New("Cannot convert perturbation time value to integer")
 			}
-			timeVals = append(timeVals, uint32(val))
+			timeVals = append(timeVals, val)
 		}
 	} else {
 		log.Print("Cannot extract raw values for time")

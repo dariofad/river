@@ -41,5 +41,20 @@ def sign_M2_C1_perturbation(PERIOD=0, ITERNO=0) -> dict:
     perturbation = dict()
     perturbation["X"] = X.tolist()
     perturbation["Y"] = Y.tolist()
-    perturbation["time"] = np.array(time_trace, dtype=np.uint32).tolist()
+    perturbation["time"] = np.array(time_trace, dtype=np.int32).tolist()
+    return perturbation
+
+def sign_M1_C4_trajectory(CYCLES=0) -> dict:
+    drel = np.array([float(i)/1000 for i in range(CYCLES)], dtype=np.float64)
+    trajectory = dict()
+    trajectory["DREL"] = drel.tolist()
+    return trajectory
+
+def sign_M1_C4_perturbation(PERIOD=0, ITERNO=0) -> dict:
+    drel = np.array([100.0], dtype=np.float64)    
+    PERIOD_START = 800
+    time_trace = [PERIOD_START]
+    perturbation = dict()
+    perturbation["DREL"] = drel.tolist()
+    perturbation["time"] = np.array(time_trace, dtype=np.int32).tolist()
     return perturbation
