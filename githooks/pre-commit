@@ -1,0 +1,35 @@
+#!/bin/bash
+
+OLD_WD=`git diff --name-only | grep -iE '\.(cpp|cc|h|hpp|c)$'`
+
+# format staged files
+STYLEARG="-style=file:.clang-format"
+for FILE in `git diff-index --cached --name-only HEAD | grep -iE '\.(cpp|cc|h|hpp|c)$'` ; do
+    clang-format -i ${STYLEARG} ${FILE}
+done
+
+# print to stdout formatted files
+NEW_WD=()
+if [[ -n `git diff --name-only` ]]
+then
+    for FILE in `git diff --name-only | grep -iE '\.(cpp|cc|h|hpp|c)$'` ; do
+	found=0
+	for F in ${OLD_WD[@]}; do
+	    if [ $FILE == $F ]; then
+		found=1
+		break
+	    fi
+	done
+	if [ $found == 0 ]; then
+	    NEW_WD+=(${FILE})
+	fi
+    done
+fi
+if [[ ${#NEW_WD[@]} -gt 0 ]]
+then
+    printf -- "Auto-formatted files brought back to working directory:\n"
+    for F in ${NEW_WD[@]}; do
+	printf -- "\t\x1B[31m%s\n" ${F}
+    done
+    exit 1
+fi

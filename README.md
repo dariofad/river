@@ -12,7 +12,7 @@ demos, check the instructions in the `server`, `simulator` and
 
 Development platform: Ubuntu 24.04 LTS (kernel newer than v5.7)
 
-Install a compatible version of the following tools:
+Developed and tested with the following tools:
 
 - `GNU  gdb` 15.0.50
 - `GNU  objdumb` 2.42
@@ -24,12 +24,20 @@ Install a compatible version of the following tools:
 - `llvm-strip` 18.1.3
 - `llvm` 18.1.3
 - `clang` 18.1.3
+- `clang-format` 18.1.3
 - `docker ` 28.4.0
 
 After, install:
 
 - Linux headers files `sudo apt install linux-headers-generic`, `sudo ln -sf /usr/include/asm-generic/ /usr/include/asm`
 - eBPF headers `sudo apt install libbpf-dev`
+
+### Code style
+
+After cloning the repository run `git config --local core.hooksPath
+githooks`. This enables a script to format C source files with clangd
+at commit time. Formatted files must be manually re-added to the
+staging area.
 
 ## Test
 
