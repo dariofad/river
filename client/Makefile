@@ -9,14 +9,14 @@ ONESHELL: monit fals sign state
 list:
 	@echo 'MODELS:'
 	@echo '1 --- EgoCar'
-	@echo '1 --- Toy Model'
-	@echo '3 --- Not yet implemented'
+	@echo '2 --- Signal Addition'
+	@echo '3 --- Abstract Fuel Control'
 	@echo 'LIST OF DEMOS AVAILABLE:'
 	@echo -e 'monit\tM=1 C=1 --- WI: [DREL], RO: [AEGO, VEGO]'
-	@echo -e 'monit\tM=2 C=3 --- RI: [X, Y], RO: [X, Y, RES, MOFFSET]'
+	@echo -e 'monit\tM=2 C=2 --- RI: [X, Y], RO: [X, Y, RES, MOFFSET]'
 	@echo -e 'fals\tM=1 C=1 --- WI: [DREL], RO: [AEGO, VEGO]'
 	@echo -e 'fals\tM=2 C=1 --- WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]'
-	@echo -e 'sign\tM=1 C=4 --- WI: [DREL], RO: [DREL, AEGO, VEGO]'
+	@echo -e 'sign\tM=1 C=2 --- WI: [DREL], RO: [DREL, AEGO, VEGO]'
 	@echo -e 'sign\tM=2 C=1 --- WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]'
 	@echo -e 'state\tM=2 C=1 --- WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]'
 

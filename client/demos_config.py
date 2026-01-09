@@ -7,7 +7,7 @@ def monit_M1_C1_trajectory() -> dict:
     trajectory["DREL"] = drel.tolist()
     return trajectory
 
-def monit_M2_C3_trajectory() -> dict:
+def monit_M2_C2_trajectory() -> dict:
     trajectory = dict()
     return trajectory
 
@@ -44,13 +44,13 @@ def sign_M2_C1_perturbation(PERIOD=0, ITERNO=0) -> dict:
     perturbation["time"] = np.array(time_trace, dtype=np.int32).tolist()
     return perturbation
 
-def sign_M1_C4_trajectory(CYCLES=0) -> dict:
+def sign_M1_C2_trajectory(CYCLES=0) -> dict:
     drel = np.array([float(i)/1000 for i in range(CYCLES)], dtype=np.float64)
     trajectory = dict()
     trajectory["DREL"] = drel.tolist()
     return trajectory
 
-def sign_M1_C4_perturbation(PERIOD=0, ITERNO=0) -> dict:
+def sign_M1_C2_perturbation(PERIOD=0, ITERNO=0) -> dict:
     drel = np.array([100.0], dtype=np.float64)    
     PERIOD_START = 800
     time_trace = [PERIOD_START]
