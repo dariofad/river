@@ -333,7 +333,7 @@ func Start(
 	// Open model executable
 	modelExecutable, err := link.OpenExecutable(simData.ModelPath)
 	if err != nil {
-		log.Fatalf("Error opening model executable: %s", err)
+		log.Printf("Error opening model executable: %s", err)
 		errCh <- err
 		wg.Done()
 		return
