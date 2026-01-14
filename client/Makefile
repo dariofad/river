@@ -2,6 +2,12 @@ M ?= 1
 C ?= 1
 HOST ?= 127.0.0.1
 
+MONIT = monit
+FALS = fals
+SIGN = sign
+STATE = state
+WIDTH = 5
+
 .PHONY: monit fals sign state
 ONESHELL: monit fals sign state
 .DEFAULT_GOAL := list
@@ -12,14 +18,15 @@ list:
 	@echo '2 --- Signal Addition'
 	@echo '3 --- Abstract Fuel Control'
 	@echo 'LIST OF DEMOS AVAILABLE:'
-	@echo -e 'monit\tM=1 C=1 --- WI: [DREL], RO: [AEGO, VEGO]'
-	@echo -e 'monit\tM=2 C=2 --- RI: [X, Y], RO: [X, Y, RES, MOFFSET]'
-	@echo -e 'monit\tM=3 C=1 --- RO: [PANGLE, AF, CMODE]'
-	@echo -e 'fals\tM=1 C=1 --- WI: [DREL], RO: [AEGO, VEGO]'
-	@echo -e 'fals\tM=2 C=1 --- WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]'
-	@echo -e 'sign\tM=1 C=2 --- WI: [DREL], RO: [DREL, AEGO, VEGO]'
-	@echo -e 'sign\tM=2 C=1 --- WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]'
-	@echo -e 'state\tM=2 C=1 --- WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]'
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(MONIT)" "M=1 C=1" "# WI: [DREL], RO: [AEGO, VEGO]"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(MONIT)" "M=2 C=2" "# RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(MONIT)" "M=3 C=1" "# WI: [PANGLE], RO: [PANGLE, AF, CMODE]"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(FALS)"  "M=1 C=1" "# WI: [DREL], RO: [AEGO, VEGO]"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(FALS)"  "M=2 C=1" "# WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(FALS)"  "M=3 C=2" "# WI: [PANGLE, RPM], RO: [PANGLE, AF, CMODE]"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=1 C=2" "# WI: [DREL], RO: [DREL, AEGO, VEGO]"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=2 C=1" "# WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=2 C=1" "# WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
 
 monit:
 	cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json && \

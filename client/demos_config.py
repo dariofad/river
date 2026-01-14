@@ -31,6 +31,14 @@ def fals_M2_C1_trajectory() -> dict:
     trajectory["Y"] = y.tolist()    
     return trajectory
 
+def fals_M3_C2_trajectory() -> dict:
+    pangle = np.array([float(i)/100000 for i in range(1001)], dtype=np.float64)
+    rpm = np.array([float(i)/100000 for i in range(1001)], dtype=np.float64)    
+    trajectory = dict()
+    trajectory["PANGLE"] = pangle.tolist()
+    trajectory["RPM"] = pangle.tolist()    
+    return trajectory
+
 def sign_M2_C1_trajectory(CYCLES=0) -> dict:
     X = np.array([10 + 0.0001 * (i + 1) for i in range(CYCLES)], dtype=np.float64)
     Y = np.array([20 for _ in range(CYCLES)], dtype=np.float64)
