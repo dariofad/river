@@ -303,7 +303,8 @@ static long extract_injected_pert(struct bpf_dynptr *dynptr, __u32 *_nof_pert_si
 
         __u32 actual_time = time - 1;
         if (actual_time > DRAINED_RECORD->time) {
-                bpf_printk("LIVE PERTURBATION, time: %d [late]", actual_time);
+                bpf_printk("LIVE PERTURBATION, time: %d [late] -->> %d", actual_time,
+                           DRAINED_RECORD->time);
                 return DRAIN_SINGLE_POINT;
         } else {
                 bpf_printk("LIVE PERTURBATION, time: %d [on time] (affects time: %d)", actual_time,
