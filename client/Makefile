@@ -28,6 +28,7 @@ list:
 	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=2 C=1" "# WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
 	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=3 C=2" "# WI: [PANGLE, RPM], RO: [PANGLE, AF, CMODE]"
 	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=2 C=1" "# WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=3 C=3" "# WI: WI: [PANGLE, RPM], RO: [PANGLE, AF, CMODE, BANGLE]"
 
 monit:
 	cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json && \

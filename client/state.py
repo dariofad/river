@@ -86,7 +86,13 @@ def main():
     print(f"config:\t{CONFIG}")
 
     global INJECTIONS
-    INJECTIONS = 1 if int(MODEL) == 2 else None
+    match int(MODEL):
+        case 1:
+                INJECTIONS = 2
+        case 2:
+                INJECTIONS = 0
+        case 3:
+                INJECTIONS = 1
     print(f"cycles:\t{CYCLES}")
     print(f"injections:\t{INJECTIONS}")
     

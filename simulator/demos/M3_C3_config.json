@@ -1,0 +1,49 @@
+{
+    "MODEL_PATH": "/home/dumb/git/git_unibg/sim2cpp/AbstractFuelControl_M1_grt_rtw/fuel_control",
+    "TIMER_SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
+    "MINOR_TO_MAJOR_RATIO": "3",
+    "NOF_CYCLES": "1001",
+    "WRITE_TIMING_I": {
+	"SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
+	"OFFSET":  "0",
+	"SIGNALS": [
+	    {
+		"SIGN_NAME": "PANGLE",
+		"SIGN_TYPE": "float64",
+		"SIGN_ADDR": "555555568720"
+	    },
+	    {
+		"SIGN_NAME": "RPM",
+		"SIGN_TYPE": "float64",
+		"SIGN_ADDR": "555555568728"
+	    }	    
+	]
+    }, 
+    "READ_TIMING_I": null,
+    "READ_TIMING_O": {
+	"SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
+	"OFFSET":  "4479",
+	"SIGNALS": [
+	    {
+		"SIGN_NAME": "PANGLE",
+		"SIGN_TYPE": "float64",
+		"SIGN_ADDR": "555555568720"
+	    },
+	    {
+		"SIGN_NAME": "AF",
+		"SIGN_TYPE": "float64",
+		"SIGN_ADDR": "555555568738"
+	    },
+	    {
+		"SIGN_NAME": "CMODE",
+		"SIGN_TYPE": "float64",
+		"SIGN_ADDR": "555555568740"
+	    },
+	    {
+		"SIGN_NAME": "BANGLE",
+		"SIGN_TYPE": "float64",
+		"SIGN_ADDR": "5555555682b0"
+	    }	    	    
+	]
+    }
+}
