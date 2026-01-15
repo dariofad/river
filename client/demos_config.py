@@ -7,14 +7,14 @@ def monit_M1_C1_trajectory() -> dict:
     trajectory["DREL"] = drel.tolist()
     return trajectory
 
+def monit_M2_C2_trajectory() -> dict:
+    trajectory = dict()
+    return trajectory
+
 def monit_M3_C1_trajectory() -> dict:
     pangle = np.array([float(i)/100000 for i in range(1001)], dtype=np.float64)
     trajectory = dict()
     trajectory["PANGLE"] = pangle.tolist()
-    return trajectory
-
-def monit_M2_C2_trajectory() -> dict:
-    trajectory = dict()
     return trajectory
 
 def fals_M1_C1_trajectory() -> dict:
@@ -36,8 +36,23 @@ def fals_M3_C2_trajectory() -> dict:
     rpm = np.array([float(i)/100000 for i in range(1001)], dtype=np.float64)    
     trajectory = dict()
     trajectory["PANGLE"] = pangle.tolist()
-    trajectory["RPM"] = pangle.tolist()    
+    trajectory["RPM"] = rpm.tolist()    
     return trajectory
+
+def sign_M1_C2_trajectory(CYCLES=0) -> dict:
+    drel = np.array([float(i)/1000 for i in range(CYCLES)], dtype=np.float64)
+    trajectory = dict()
+    trajectory["DREL"] = drel.tolist()
+    return trajectory
+
+def sign_M1_C2_perturbation(PERIOD=0, ITERNO=0) -> dict:
+    drel = np.array([100.0], dtype=np.float64)    
+    PERIOD_START = 800
+    time_trace = [PERIOD_START]
+    perturbation = dict()
+    perturbation["DREL"] = drel.tolist()
+    perturbation["time"] = np.array(time_trace, dtype=np.int32).tolist()
+    return perturbation
 
 def sign_M2_C1_trajectory(CYCLES=0) -> dict:
     X = np.array([10 + 0.0001 * (i + 1) for i in range(CYCLES)], dtype=np.float64)
@@ -58,20 +73,23 @@ def sign_M2_C1_perturbation(PERIOD=0, ITERNO=0) -> dict:
     perturbation["time"] = np.array(time_trace, dtype=np.int32).tolist()
     return perturbation
 
-def sign_M1_C2_trajectory(CYCLES=0) -> dict:
-    drel = np.array([float(i)/1000 for i in range(CYCLES)], dtype=np.float64)
+def sign_M3_C2_trajectory(CYCLES=0) -> dict:
+    pangle = np.array([float(i)/100000 for i in range(CYCLES)], dtype=np.float64)
+    rpm = np.array([float(i)/100000 for i in range(CYCLES)], dtype=np.float64)    
     trajectory = dict()
-    trajectory["DREL"] = drel.tolist()
+    trajectory["PANGLE"] = pangle.tolist()
+    trajectory["RPM"] = rpm.tolist()    
     return trajectory
 
-def sign_M1_C2_perturbation(PERIOD=0, ITERNO=0) -> dict:
-    drel = np.array([100.0], dtype=np.float64)    
-    PERIOD_START = 800
-    time_trace = [PERIOD_START]
+def sign_M3_C2_perturbation(PERIOD=0, ITERNO=0) -> dict:
+    pangle = np.array([-float(i) for i in range(10)], dtype=np.float64)
+    PERIOD_START = 990
+    time_trace = [PERIOD_START + i for i in range(10)]
     perturbation = dict()
-    perturbation["DREL"] = drel.tolist()
+    perturbation["PANGLE"] = pangle.tolist()
     perturbation["time"] = np.array(time_trace, dtype=np.int32).tolist()
     return perturbation
+
 
 def state_M2_C1_trajectory(CYCLES=0) -> dict:
     X = np.array([10 + 0.0001 * (i + 1) for i in range(CYCLES)], dtype=np.float64)
