@@ -39,18 +39,19 @@ githooks`. This enables a script to format C source files with clangd
 at commit time. Formatted files must be manually re-added to the
 staging area.
 
-## Test
+## Demos
 
-The current version uses several models from this
-[repo](https://github.com/dariofad/sim2cpp) (commit: c0ce95f). See
-this other
-[repo](https://github.com/shincyou0916/Falsification-for-MPCACC-model-with-eBPF)
-for an example of a Matlab client.
+The demos used to test the server use models from The current version
+uses several models from [this
+repo](https://github.com/dariofad/sim2cpp/tree/bd5f954a3f44618b81fb841b780754a223f2721d). It
+is also possible to interact with the server using a Matlab session
+(see
+[here](https://github.com/shincyou0916/Falsification-for-MPCACC-model-with-eBPF)
+for some code examples).
 
-### Run
+### Build and run the server
 
-- Disable ASLR with `make aslr_off` before starting the development session
-- Create the redis container with `make redis`
+- Create the redis container with `make redis` (only the first time)
 - Build and run the server with `make`
 
 You can get additional feedback checking the output of the eBPF probes at `/sys/kernel/tracing/trace_pipe`.

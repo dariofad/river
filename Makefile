@@ -1,4 +1,4 @@
-.phony: all build run generate vmlinux aslr_off
+.phony: all build run generate vmlinux aslr_off redis start_redis stop_redis
 
 EBPF_PROBE = probe
 GO_MODULE = ebpf_simulator
@@ -32,7 +32,13 @@ redis:
 start_redis:
 	docker start redis
 
-run: build start_redis
+stop_redis:
+	docker stop redis
+
+aslr_off:
+	echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
+
+run: | aslr_off build start_redis
 	sudo su -c 'rm -rf /sys/fs/bpf/inner*'
 	sudo su -c 'rm -rf /sys/fs/bpf/pertbuf*'
 	sudo su -c 'rm -rf /sys/fs/bpf/state_pertbuf*'
@@ -48,6 +54,3 @@ run: build start_redis
 clean:
 	@rm -rf $(SIMULATOR_PATH)/headers
 	@rm -rf $(GO_MODULE) $(SIMULATOR_PATH)/$(EBPF_PROBE)_bpf* $(SIMULATOR_PATH)/injector $(SIMULATOR_PATH)/state_injector
-
-aslr_off:
-	@echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
