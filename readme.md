@@ -10,7 +10,7 @@ demos, check the instructions in the `server`, `simulator` and
 
 ## Prerequisites
 
-Development platform: Ubuntu 24.04 LTS (kernel newer than v5.7)
+Development platform: Ubuntu 24.04 LTS (kernel newer than v6.1)
 
 Developed and tested with the following tools:
 
