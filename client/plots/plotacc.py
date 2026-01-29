@@ -73,4 +73,4 @@ for c, case in enumerate(CASES):
         axs[c].text(317, 10, '+Δ', ha='left', va='center', fontsize=16, color='black')        
 
 fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, -0.17), ncol=3)
-fig.savefig('fig.png', bbox_inches='tight')
+fig.savefig('acc-exp.png', bbox_inches='tight')
