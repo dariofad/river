@@ -42,7 +42,8 @@ for c, case in enumerate(CASES):
             phi[c].append(float(line[3]))            
 
     axs[c].plot(times[c], real_drel[c], label="Real distance", linestyle='--', linewidth=3, color='black')
-    axs[c].plot(times[c], ow_drel[c], label="Injected distance", linestyle=':', linewidth=3, color='red')
+    if c != 0:
+        axs[c].plot(times[c], ow_drel[c], label="Injected distance", linestyle=':', linewidth=3, color='red')
     axs[c].text(220, 2, 'unsafe area', ha='center', va='center', fontsize=16, color='black')
     rect = patches.Rectangle(
         (0,0),
