@@ -17,6 +17,7 @@ import (
 )
 
 var VERBOSE bool
+var BENCH bool
 var SERVER_BUSY sync.Mutex
 
 func StartService(port uint16, srv my_types.Service) {

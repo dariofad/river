@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -24,6 +25,7 @@ import (
 )
 
 var VERBOSE bool
+var BENCH bool
 var RATIO uint32
 var CYCLES uint32
 var INTERACTIVE uint16
@@ -458,6 +460,7 @@ func Start(
 		if err := monitorSimulation(ctx, probeObjs, _nof_ro); err != nil {
 			errCh <- err
 			wg.Done()
+			stopSimulator()
 			return
 		}
 	case my_types.Falsification:
@@ -484,6 +487,7 @@ func Start(
 					log.Printf("Trace lookup failed: %s\n", err)
 					errCh <- err
 					wg.Done()
+					stopSimulator()
 					return
 				}
 			}
@@ -507,6 +511,7 @@ func Start(
 			log.Printf("Cannot pin state perturbation buffer at %v", pertRBPath)
 			errCh <- err
 			wg.Done()
+			stopSimulator()
 			return
 		}
 		// defer unpinnning
@@ -572,6 +577,7 @@ func Start(
 		default:
 			wg.Done()
 		}
+		stopSimulator()
 		return
 
 	case my_types.SignalPerturbation:
@@ -589,6 +595,7 @@ func Start(
 			log.Printf("Cannot pin perturbation buffer at %v", pertRBPath)
 			errCh <- err
 			wg.Done()
+			stopSimulator()
 			return
 		}
 		// defer unpinnning
@@ -661,12 +668,26 @@ func Start(
 		default:
 			wg.Done()
 		}
+
+		stopSimulator()
 		return
 	}
 
 	// terminate
 	wg.Done()
+	stopSimulator()
 	return
+}
+
+func stopSimulator() {
+
+	if BENCH {
+		var line string
+		log.Print("Press <enter> to stop the simulation and unload the maps")
+		fmt.Scanln(&line)
+	} else {
+		log.Print("Simulator exited")
+	}
 }
 
 func customConversion(rawVal interface{}) (uint32, bool) {

@@ -1,4 +1,4 @@
-.phony: all build run generate vmlinux aslr_off redis start_redis stop_redis
+.phony: all build run generate vmlinux aslr_off redis start_redis stop_redis bench
 
 EBPF_PROBE = probe
 GO_MODULE = ebpf_simulator
@@ -38,7 +38,7 @@ stop_redis:
 aslr_off:
 	echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
-run: | aslr_off build start_redis
+_run: | aslr_off build start_redis
 	sudo su -c 'rm -rf /sys/fs/bpf/inner*'
 	sudo su -c 'rm -rf /sys/fs/bpf/pertbuf*'
 	sudo su -c 'rm -rf /sys/fs/bpf/state_pertbuf*'
@@ -49,7 +49,13 @@ run: | aslr_off build start_redis
 		docker run -d --name $(CONTAINER_NAME) $(IMAGE_NAME); \
 		sleep 3; \
 	fi
+
+run: _run
 	@sudo ./$(GO_MODULE)
+
+bench: _run
+	sudo sysctl -w kernel.bpf_stats_enabled=1
+	@sudo ./$(GO_MODULE) -b
 
 clean:
 	@rm -rf $(SIMULATOR_PATH)/headers
