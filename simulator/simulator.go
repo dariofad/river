@@ -697,7 +697,7 @@ func stopSimulator(simulationStartTime time.Time, _nof_wi, _nof_ri, _nof_ro uint
 		strconv.FormatUint(uint64(_nof_wi), 10) + "," +
 		strconv.FormatUint(uint64(_nof_ri), 10) + "," +
 		strconv.FormatUint(uint64(_nof_ro), 10) + "," +
-		strconv.FormatInt(elapsedTime.Nanoseconds(), 10)
+		strconv.FormatInt(elapsedTime.Nanoseconds(), 10) + "\n"
 
 	if _, err := file.WriteString(logLine); err != nil {
 		log.Printf("Error writing stats line: %s", err)

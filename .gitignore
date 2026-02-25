@@ -58,3 +58,6 @@ vmlinux.h
 
 # project notes
 notes.md
+
+# stats
+_stats.csv
