@@ -18,7 +18,8 @@ import (
 
 var VERBOSE bool
 var BENCH bool
-var SERVER_BUSY sync.Mutex
+var UNSUPERVISED bool
+var BUSY sync.Mutex
 
 func StartService(port uint16, srv my_types.Service) {
 
@@ -478,14 +479,14 @@ simulateAndPerturbSignal:
 func lockServer() {
 
 	log.Print("Trying to lock the server...")
-	SERVER_BUSY.Lock()
+	BUSY.Lock()
 	log.Print("Server locked")
 }
 
 func unlockServer() {
 
 	log.Print("Trying to unlock the server...")
-	SERVER_BUSY.Unlock()
+	BUSY.Unlock()
 	log.Print("Server unlocked")
 }
 

@@ -1,4 +1,4 @@
-.phony: all build run generate vmlinux aslr_off redis start_redis stop_redis bench
+.phony: all build run generate vmlinux aslr_off redis start_redis stop_redis bench unsupervised
 
 EBPF_PROBE = probe
 GO_MODULE = ebpf_simulator
@@ -62,11 +62,11 @@ _run_bench: | build_bench _run
 
 run: _run_debug
 	@sudo ./$(GO_MODULE)
-
 bench: _run_bench
 	sudo sysctl -w kernel.bpf_stats_enabled=1
 	@sudo ./$(GO_MODULE) -b
-
+unsupervised: _run_bench 
+	@sudo ./$(GO_MODULE) -b -u # bench and measures the model, but doesn't need to collect eBPF stats
 clean:
 	@rm -rf $(SIMULATOR_PATH)/headers
 	@rm -rf $(GO_MODULE) $(SIMULATOR_PATH)/$(EBPF_PROBE)_bpf* $(SIMULATOR_PATH)/injector $(SIMULATOR_PATH)/state_injector
