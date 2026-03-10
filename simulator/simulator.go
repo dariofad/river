@@ -26,6 +26,7 @@ import (
 
 var VERBOSE bool
 var BENCH bool
+var UNSUPERVISED bool
 var RATIO uint32
 var CYCLES uint32
 var INTERACTIVE uint16
@@ -186,21 +187,23 @@ func Start(
 
 	// create the probeObjects
 	probeObjs := probeObjects{}
-	// Load eBPF objects (maps + programs) into the kernel
-	if err := spec.LoadAndAssign(&probeObjs, &ebpf.CollectionOptions{
-		Programs: ebpf.ProgramOptions{
-			LogLevel:     1,
-			LogSizeStart: 20 * 1024 * 1024,
-		},
-	}); err != nil {
-		log.Printf("Cannot load eBPF objects, err: %s", err)
-		var ve *ebpf.VerifierError
-		if errors.As(err, &ve) {
-			log.Printf("Verifier error: %+v", ve)
+	if !UNSUPERVISED {
+		// Load eBPF objects (maps + programs) into the kernel
+		if err := spec.LoadAndAssign(&probeObjs, &ebpf.CollectionOptions{
+			Programs: ebpf.ProgramOptions{
+				LogLevel:     1,
+				LogSizeStart: 20 * 1024 * 1024,
+			},
+		}); err != nil {
+			log.Printf("Cannot load eBPF objects, err: %s", err)
+			var ve *ebpf.VerifierError
+			if errors.As(err, &ve) {
+				log.Printf("Verifier error: %+v", ve)
+			}
+			errCh <- err
+			wg.Done()
+			return
 		}
-		errCh <- err
-		wg.Done()
-		return
 	}
 	defer probeObjs.Close()
 
@@ -214,108 +217,110 @@ func Start(
 	log.Print("Input trajectory extracted successfully")
 
 	// get trace map specs
-	traceeMapSpec := spec.Maps["tracee_map"]
-	traceeMapSpec.MaxEntries = paddedEntries(uint32(len(sTypes)))
-	// create outer map
-	traceeMap := probeObjs.TraceeMap
-	if err != nil {
-		log.Printf("Cannot create mSignals (outer) map: %s", err)
-		errCh <- err
-		wg.Done()
-		return
-	}
-	// create signal traces
-	// start preparing a template for the array positions
-	innerMapKeys := make([]uint32, CYCLES)
-	for p, _ := range innerMapKeys {
-		innerMapKeys[p] = uint32(p)
-	}
-	for s := 0; s < len(sTypes); s++ {
-		// refine and clone the inner map spec to avoid reuse
-		innerSpec := traceeMapSpec.InnerMap.Copy()
-		innerSpec.MaxEntries = paddedEntries(CYCLES)
-		inner, err := ebpf.NewMap(innerSpec)
+	if !UNSUPERVISED {
+		traceeMapSpec := spec.Maps["tracee_map"]
+		traceeMapSpec.MaxEntries = paddedEntries(uint32(len(sTypes)))
+		// create outer map
+		traceeMap := probeObjs.TraceeMap
 		if err != nil {
-			log.Printf("Cannot create mSignal (inner) map: %s", err)
+			log.Printf("Cannot create mSignals (outer) map: %s", err)
 			errCh <- err
 			wg.Done()
 			return
 		}
-		// pin the inner map
-		pinPath := "/sys/fs/bpf/inner_values_" + strconv.FormatInt(int64(s), 10)
-		if err := inner.Pin(pinPath); err != nil {
-			log.Printf("Cannot pin inner map at %v", pinPath)
-			errCh <- err
-			wg.Done()
-			return
+		// create signal traces
+		// start preparing a template for the array positions
+		innerMapKeys := make([]uint32, CYCLES)
+		for p, _ := range innerMapKeys {
+			innerMapKeys[p] = uint32(p)
 		}
-		// inject the trajectory
-		if s < int(_nof_wi) { // only for signals to write
-			sName := simData.WTimingI.Signals[s].SignName
-			// set the trajectory with a batch update
-			_, err = inner.BatchUpdate(innerMapKeys, trajectory[sName], &ebpf.BatchOptions{
-				Flags: uint64(ebpf.UpdateAny),
-			})
+		for s := 0; s < len(sTypes); s++ {
+			// refine and clone the inner map spec to avoid reuse
+			innerSpec := traceeMapSpec.InnerMap.Copy()
+			innerSpec.MaxEntries = paddedEntries(CYCLES)
+			inner, err := ebpf.NewMap(innerSpec)
 			if err != nil {
-				log.Printf("Injection of trajectory failed, %v", err)
-				errCh <- errors.New("Trajectory injection failure")
+				log.Printf("Cannot create mSignal (inner) map: %s", err)
+				errCh <- err
 				wg.Done()
 				return
 			}
-			log.Printf("Input trajectory %d successfully injected", s)
-		}
-		// insert single trace map into tracees
-		key := uint32(s)
-		fd := inner.FD()
-		value := uint32(fd)
-		if err := traceeMap.Update(key, value, 0); err != nil {
-			if errno, ok := err.(syscall.Errno); ok {
-				log.Printf("KERNEL ERROR: errno=%d", errno)
-			} else {
-				log.Printf("ERROR: %v", err)
+			// pin the inner map
+			pinPath := "/sys/fs/bpf/inner_values_" + strconv.FormatInt(int64(s), 10)
+			if err := inner.Pin(pinPath); err != nil {
+				log.Printf("Cannot pin inner map at %v", pinPath)
+				errCh <- err
+				wg.Done()
+				return
 			}
-			log.Printf("Failed to insert FD for signal %d: %s", s, err)
-			errCh <- err
-			wg.Done()
-			return
-		}
-		// defer inner map pinning
-		// Now, unpin the map
-		defer func() {
-			if err := inner.Unpin(); err != nil {
-				log.Printf("Cannot unpin inner map, err: %v", err)
+			// inject the trajectory
+			if s < int(_nof_wi) { // only for signals to write
+				sName := simData.WTimingI.Signals[s].SignName
+				// set the trajectory with a batch update
+				_, err = inner.BatchUpdate(innerMapKeys, trajectory[sName], &ebpf.BatchOptions{
+					Flags: uint64(ebpf.UpdateAny),
+				})
+				if err != nil {
+					log.Printf("Injection of trajectory failed, %v", err)
+					errCh <- errors.New("Trajectory injection failure")
+					wg.Done()
+					return
+				}
+				log.Printf("Input trajectory %d successfully injected", s)
 			}
-			log.Printf("Map unpinned from %s", pinPath)
-		}()
-		defer inner.Close()
-	}
+			// insert single trace map into tracees
+			key := uint32(s)
+			fd := inner.FD()
+			value := uint32(fd)
+			if err := traceeMap.Update(key, value, 0); err != nil {
+				if errno, ok := err.(syscall.Errno); ok {
+					log.Printf("KERNEL ERROR: errno=%d", errno)
+				} else {
+					log.Printf("ERROR: %v", err)
+				}
+				log.Printf("Failed to insert FD for signal %d: %s", s, err)
+				errCh <- err
+				wg.Done()
+				return
+			}
+			// defer inner map pinning
+			// Now, unpin the map
+			defer func() {
+				if err := inner.Unpin(); err != nil {
+					log.Printf("Cannot unpin inner map, err: %v", err)
+				}
+				log.Printf("Map unpinned from %s", pinPath)
+			}()
+			defer inner.Close()
+		}
 
-	// setup signal addresses and types
-	mAddressSpec := spec.Maps["address_map"]
-	mAddressSpec.MaxEntries = paddedEntries(uint32(len(sTypes)))
-	mTypesSpec := spec.Maps["type_map"]
-	mTypesSpec.MaxEntries = paddedEntries(uint32(len(sTypes)))
-	var skey uint32 = 0
-	for _, sCategory := range sCategories {
-		for _, signal := range sCategory.Signals {
-			// address
-			signalAddr, err := strconv.ParseUint(signal.SignAddr, 16, 64)
-			if err != nil {
-				log.Printf("Error converting signal address: %s", err)
-				errCh <- err
-				wg.Done()
-				return
+		// setup signal addresses and types
+		mAddressSpec := spec.Maps["address_map"]
+		mAddressSpec.MaxEntries = paddedEntries(uint32(len(sTypes)))
+		mTypesSpec := spec.Maps["type_map"]
+		mTypesSpec.MaxEntries = paddedEntries(uint32(len(sTypes)))
+		var skey uint32 = 0
+		for _, sCategory := range sCategories {
+			for _, signal := range sCategory.Signals {
+				// address
+				signalAddr, err := strconv.ParseUint(signal.SignAddr, 16, 64)
+				if err != nil {
+					log.Printf("Error converting signal address: %s", err)
+					errCh <- err
+					wg.Done()
+					return
+				}
+				err = probeObjs.AddressMap.Update(skey, signalAddr, 0)
+				if err != nil {
+					log.Printf("Cannot perform the update to addressMap: %v", err)
+					errCh <- err
+					wg.Done()
+					return
+				}
+				// type
+				err = probeObjs.TypeMap.Update(skey, sTypes[skey], 0)
+				skey += 1
 			}
-			err = probeObjs.AddressMap.Update(skey, signalAddr, 0)
-			if err != nil {
-				log.Printf("Cannot perform the update to addressMap: %v", err)
-				errCh <- err
-				wg.Done()
-				return
-			}
-			// type
-			err = probeObjs.TypeMap.Update(skey, sTypes[skey], 0)
-			skey += 1
 		}
 	}
 
@@ -325,11 +330,13 @@ func Start(
 	} else {
 		INTERACTIVE = 1
 	}
-	if probeObjs.InteractiveMap.Update(uint32(0), uint16(INTERACTIVE), 0); err != nil {
-		log.Printf("Error setting interactivity: %s", err)
-		errCh <- err
-		wg.Done()
-		return
+	if !UNSUPERVISED {
+		if probeObjs.InteractiveMap.Update(uint32(0), uint16(INTERACTIVE), 0); err != nil {
+			log.Printf("Error setting interactivity: %s", err)
+			errCh <- err
+			wg.Done()
+			return
+		}
 	}
 
 	// Open model executable
@@ -343,81 +350,86 @@ func Start(
 
 	// Link all uprobes
 	var offset uint64
-	// 1) writes on input signals
-	if _nof_wi > 0 {
-		offset, err = strconv.ParseUint(simData.WTimingI.Offset, 10, 64) // base 10
-		if err != nil {
-			log.Printf("Error converting uprobe offset: %s", err)
-			errCh <- err
-			wg.Done()
-			return
+	if !UNSUPERVISED {
+		// 1) writes on input signals
+		if _nof_wi > 0 {
+			offset, err = strconv.ParseUint(simData.WTimingI.Offset, 10, 64) // base 10
+			if err != nil {
+				log.Printf("Error converting uprobe offset: %s", err)
+				errCh <- err
+				wg.Done()
+				return
+			}
+			uprobe_wi, err := modelExecutable.Uprobe(
+				simData.WTimingI.SymbolName,
+				probeObjs.UprobeWriteI,
+				&link.UprobeOptions{Offset: offset},
+			)
+			if err != nil {
+				log.Printf("Error setting the uprobe_wi: %v", err)
+				errCh <- err
+				wg.Done()
+				return
+			} else {
+				log.Print("Uprobe_wi linked")
+			}
+			defer uprobe_wi.Close()
 		}
-		uprobe_wi, err := modelExecutable.Uprobe(
-			simData.WTimingI.SymbolName,
-			probeObjs.UprobeWriteI,
-			&link.UprobeOptions{Offset: offset},
-		)
-		if err != nil {
-			log.Printf("Error setting the uprobe_wi: %v", err)
-			errCh <- err
-			wg.Done()
-			return
-		} else {
-			log.Print("Uprobe_wi linked")
+		// 2) reads on input signals
+		if _nof_ri > 0 {
+			offset, err = strconv.ParseUint(simData.RTimingI.Offset, 10, 64) // base 10
+			if err != nil {
+				log.Printf("Error converting uprobe offset: %s", err)
+				errCh <- err
+				wg.Done()
+				return
+			}
+			uprobe_ri, err := modelExecutable.Uprobe(
+				simData.RTimingI.SymbolName,
+				probeObjs.UprobeReadI,
+				&link.UprobeOptions{Offset: offset},
+			)
+			if err != nil {
+				log.Printf("Error setting the uprobe_ri: %v", err)
+				errCh <- err
+				wg.Done()
+				return
+			} else {
+				log.Print("Uprobe_ri linked")
+			}
+			defer uprobe_ri.Close()
 		}
-		defer uprobe_wi.Close()
-	}
-	// 2) reads on input signals
-	if _nof_ri > 0 {
-		offset, err = strconv.ParseUint(simData.RTimingI.Offset, 10, 64) // base 10
-		if err != nil {
-			log.Printf("Error converting uprobe offset: %s", err)
-			errCh <- err
-			wg.Done()
-			return
+		// 3) reads on output signals
+		if _nof_ro > 0 {
+			offset, err = strconv.ParseUint(simData.RTimingO.Offset, 10, 64) // base 10
+			if err != nil {
+				log.Printf("Error converting uprobe offset: %s", err)
+				errCh <- err
+				wg.Done()
+				return
+			}
+			uprobe_ro, err := modelExecutable.Uprobe(
+				simData.RTimingO.SymbolName,
+				probeObjs.UprobeReadO,
+				&link.UprobeOptions{Offset: offset},
+			)
+			if err != nil {
+				log.Printf("Error setting the uprobe_ro: %v", err)
+				errCh <- err
+				wg.Done()
+				return
+			} else {
+				log.Print("Uprobe_ro linked")
+			}
+			defer uprobe_ro.Close()
 		}
-		uprobe_ri, err := modelExecutable.Uprobe(
-			simData.RTimingI.SymbolName,
-			probeObjs.UprobeReadI,
-			&link.UprobeOptions{Offset: offset},
-		)
-		if err != nil {
-			log.Printf("Error setting the uprobe_ri: %v", err)
-			errCh <- err
-			wg.Done()
-			return
-		} else {
-			log.Print("Uprobe_ri linked")
-		}
-		defer uprobe_ri.Close()
-	}
-	// 3) reads on output signals
-	if _nof_ro > 0 {
-		offset, err = strconv.ParseUint(simData.RTimingO.Offset, 10, 64) // base 10
-		if err != nil {
-			log.Printf("Error converting uprobe offset: %s", err)
-			errCh <- err
-			wg.Done()
-			return
-		}
-		uprobe_ro, err := modelExecutable.Uprobe(
-			simData.RTimingO.SymbolName,
-			probeObjs.UprobeReadO,
-			&link.UprobeOptions{Offset: offset},
-		)
-		if err != nil {
-			log.Printf("Error setting the uprobe_ro: %v", err)
-			errCh <- err
-			wg.Done()
-			return
-		} else {
-			log.Print("Uprobe_ro linked")
-		}
-		defer uprobe_ro.Close()
 	}
 	// cyclic timer
-	uprobe_timer, err := modelExecutable.Uprobe(simData.TimerSymbol, probeObjs.UprobeTimer, nil)
-	defer uprobe_timer.Close()
+	var uprobe_timer link.Link
+	if !UNSUPERVISED {
+		uprobe_timer, err = modelExecutable.Uprobe(simData.TimerSymbol, probeObjs.UprobeTimer, nil)
+		defer uprobe_timer.Close()
+	}
 
 	// Start preparing the simulation commands
 	ctx, cancelSimulation := context.WithCancel(context.Background())
@@ -447,6 +459,7 @@ func Start(
 				log.Printf("Simulation finished with error: %s", err)
 				errCh <- err
 				wg.Done()
+				stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
 				return
 			}
 		} else {
@@ -467,38 +480,40 @@ func Start(
 			return
 		}
 	case my_types.Falsification:
-		var outSignals my_types.OutputTrace
-		for id, signal := range simData.RTimingO.Signals {
-			var signTrace my_types.Trace
-			signTrace.SignName = signal.SignName
-			var signalKey uint32 = uint32(id) + _nof_wi + _nof_ri
-			// get the trace from the eBPF map
-			pinPath := "/sys/fs/bpf/inner_values_" + strconv.FormatInt(int64(signalKey), 10)
-			innerTrace, err := ebpf.LoadPinnedMap(pinPath, nil)
-			if err != nil {
-				log.Printf("Cannot recover inner pinned map at %s: %v", pinPath, err)
-				errCh <- err
-				wg.Done()
-				return
-			}
-			defer innerTrace.Close()
-			// trace extraction
-			values := make([]float64, CYCLES)
-			for pos := uint32(0); pos < CYCLES; pos++ {
-				err := innerTrace.Lookup(&pos, &values[pos])
+		if !UNSUPERVISED {
+			var outSignals my_types.OutputTrace
+			for id, signal := range simData.RTimingO.Signals {
+				var signTrace my_types.Trace
+				signTrace.SignName = signal.SignName
+				var signalKey uint32 = uint32(id) + _nof_wi + _nof_ri
+				// get the trace from the eBPF map
+				pinPath := "/sys/fs/bpf/inner_values_" + strconv.FormatInt(int64(signalKey), 10)
+				innerTrace, err := ebpf.LoadPinnedMap(pinPath, nil)
 				if err != nil {
-					log.Printf("Trace lookup failed: %s\n", err)
+					log.Printf("Cannot recover inner pinned map at %s: %v", pinPath, err)
 					errCh <- err
 					wg.Done()
-					stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
 					return
 				}
+				defer innerTrace.Close()
+				// trace extraction
+				values := make([]float64, CYCLES)
+				for pos := uint32(0); pos < CYCLES; pos++ {
+					err := innerTrace.Lookup(&pos, &values[pos])
+					if err != nil {
+						log.Printf("Trace lookup failed: %s\n", err)
+						errCh <- err
+						wg.Done()
+						stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+						return
+					}
+				}
+				signTrace.Values = values
+				//log.Printf("values %v", values)
+				outSignals.Signals = append(outSignals.Signals, signTrace)
 			}
-			signTrace.Values = values
-			//log.Printf("values %v", values)
-			outSignals.Signals = append(outSignals.Signals, signTrace)
+			resCh <- outSignals
 		}
-		resCh <- outSignals
 	case my_types.StatePerturbation:
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -510,63 +525,67 @@ func Start(
 		defer close(errChi)
 		// pin the user space ringbuf
 		pertRBPath := "/sys/fs/bpf/state_pertbuf"
-		if err := probeObjs.StateRb.Pin(pertRBPath); err != nil {
-			log.Printf("Cannot pin state perturbation buffer at %v", pertRBPath)
-			errCh <- err
-			wg.Done()
-			stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
-			return
-		}
-		// defer unpinnning
-		defer func() {
-			if err := probeObjs.StateRb.Unpin(); err != nil {
-				log.Printf("Cannot unpin state perturbation buffer: %v", err)
+		if !UNSUPERVISED {
+			if err := probeObjs.StateRb.Pin(pertRBPath); err != nil {
+				log.Printf("Cannot pin state perturbation buffer at %v", pertRBPath)
+				errCh <- err
+				wg.Done()
+				stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+				return
 			}
-		}()
+			// defer unpinnning
+			defer func() {
+				if err := probeObjs.StateRb.Unpin(); err != nil {
+					log.Printf("Cannot unpin state perturbation buffer: %v", err)
+				}
+			}()
+		}
 
 		// apply state perturbation
-		go func(ctx context.Context, statePertCh <-chan []my_types.StateRecord, probeObjs probeObjects, errCh chan error) {
+		if !UNSUPERVISED {
+			go func(ctx context.Context, statePertCh <-chan []my_types.StateRecord, probeObjs probeObjects, errCh chan error) {
 
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case perturbation := <-statePertCh:
-					// write records to a temp file
-					tempFile, err := os.CreateTemp("", "model_state_records_*.bin")
-					if err != nil {
-						log.Printf("Cannot create temporary inject file for state records: %v", err)
-						break
-					}
-					defer tempFile.Close()
-					for _, r := range perturbation {
-						binary.Write(tempFile, binary.LittleEndian, r.Time)
-						binary.Write(tempFile, binary.LittleEndian, r.ValueSize)
-						binary.Write(tempFile, binary.LittleEndian, r.Addr)
-						binary.Write(tempFile, binary.LittleEndian, r.Value)
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case perturbation := <-statePertCh:
+						// write records to a temp file
+						tempFile, err := os.CreateTemp("", "model_state_records_*.bin")
+						if err != nil {
+							log.Printf("Cannot create temporary inject file for state records: %v", err)
+							break
+						}
+						defer tempFile.Close()
+						for _, r := range perturbation {
+							binary.Write(tempFile, binary.LittleEndian, r.Time)
+							binary.Write(tempFile, binary.LittleEndian, r.ValueSize)
+							binary.Write(tempFile, binary.LittleEndian, r.Addr)
+							binary.Write(tempFile, binary.LittleEndian, r.Value)
+						}
+
+						// call the injector
+						enableInjectorVerbosity := "0"
+						if VERBOSE {
+							enableInjectorVerbosity = "1"
+						}
+						injCmd := exec.Command(
+							"sudo",
+							"./simulator/state_injector",
+							tempFile.Name(),
+							enableInjectorVerbosity,
+						)
+						injCmd.Stdout = os.Stdout
+						injCmd.Stderr = os.Stderr
+						if err = injCmd.Run(); err != nil {
+							log.Printf("Injector cmd failed: %v", err)
+							break
+						}
 					}
 
-					// call the injector
-					enableInjectorVerbosity := "0"
-					if VERBOSE {
-						enableInjectorVerbosity = "1"
-					}
-					injCmd := exec.Command(
-						"sudo",
-						"./simulator/state_injector",
-						tempFile.Name(),
-						enableInjectorVerbosity,
-					)
-					injCmd.Stdout = os.Stdout
-					injCmd.Stderr = os.Stderr
-					if err = injCmd.Run(); err != nil {
-						log.Printf("Injector cmd failed: %v", err)
-						break
-					}
 				}
-
-			}
-		}(ctx, statePertCh, probeObjs, errChi)
+			}(ctx, statePertCh, probeObjs, errChi)
+		}
 
 		// monitor simulation
 		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, _nof_ro)
@@ -594,71 +613,75 @@ func Start(
 		defer close(errChi)
 		// pin the user space ringbuf
 		pertRBPath := "/sys/fs/bpf/pertbuf"
-		if err := probeObjs.InjRb.Pin(pertRBPath); err != nil {
-			log.Printf("Cannot pin perturbation buffer at %v", pertRBPath)
-			errCh <- err
-			wg.Done()
-			stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
-			return
-		}
-		// defer unpinnning
-		defer func() {
-			if err := probeObjs.InjRb.Unpin(); err != nil {
-				log.Printf("Cannot unpin perturbation buffer: %v", err)
+		if !UNSUPERVISED {
+			if err := probeObjs.InjRb.Pin(pertRBPath); err != nil {
+				log.Printf("Cannot pin perturbation buffer at %v", pertRBPath)
+				errCh <- err
+				wg.Done()
+				stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+				return
 			}
-		}()
+			// defer unpinnning
+			defer func() {
+				if err := probeObjs.InjRb.Unpin(); err != nil {
+					log.Printf("Cannot unpin perturbation buffer: %v", err)
+				}
+			}()
+		}
 
 		// apply signal perturbation
-		go func(ctx context.Context, pertCh <-chan map[string]interface{}, probeObjs probeObjects, errCh chan error, _nof_wi uint32) {
+		if !UNSUPERVISED {
+			go func(ctx context.Context, pertCh <-chan map[string]interface{}, probeObjs probeObjects, errCh chan error, _nof_wi uint32) {
 
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case perturbation := <-pertCh:
-					// extract perturbation records
-					pertRecords, err := extractPerturbationRecords(perturbation, simData)
-					if err != nil {
-						log.Printf("Error converting perturbation into model input records: %v", err)
-					}
-					// write records to a temp file (todo: improve)
-					tempFile, err := os.CreateTemp("", "model_records_*.bin")
-					if err != nil {
-						log.Printf("Cannot create temporary inject file: %v", err)
-						break
-					}
-					defer tempFile.Close()
-					for _, r := range pertRecords {
-						binary.Write(tempFile, binary.LittleEndian, r.Time)
-						binary.Write(tempFile, binary.LittleEndian, r.Filler)
-						for _, v := range r.Values {
-							binary.Write(tempFile, binary.LittleEndian, math.Float64bits(v))
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case perturbation := <-pertCh:
+						// extract perturbation records
+						pertRecords, err := extractPerturbationRecords(perturbation, simData)
+						if err != nil {
+							log.Printf("Error converting perturbation into model input records: %v", err)
+						}
+						// write records to a temp file (todo: improve)
+						tempFile, err := os.CreateTemp("", "model_records_*.bin")
+						if err != nil {
+							log.Printf("Cannot create temporary inject file: %v", err)
+							break
+						}
+						defer tempFile.Close()
+						for _, r := range pertRecords {
+							binary.Write(tempFile, binary.LittleEndian, r.Time)
+							binary.Write(tempFile, binary.LittleEndian, r.Filler)
+							for _, v := range r.Values {
+								binary.Write(tempFile, binary.LittleEndian, math.Float64bits(v))
+							}
+
 						}
 
+						// call the injector
+						enableInjectorVerbosity := "0"
+						if VERBOSE {
+							enableInjectorVerbosity = "1"
+						}
+						injCmd := exec.Command(
+							"sudo",
+							"./simulator/injector",
+							strconv.FormatInt(int64(_nof_wi), 10),
+							tempFile.Name(),
+							enableInjectorVerbosity,
+						)
+						injCmd.Stdout = os.Stdout
+						injCmd.Stderr = os.Stderr
+						if err = injCmd.Run(); err != nil {
+							log.Printf("Injector cmd failed: %v", err)
+							break
+						}
 					}
 
-					// call the injector
-					enableInjectorVerbosity := "0"
-					if VERBOSE {
-						enableInjectorVerbosity = "1"
-					}
-					injCmd := exec.Command(
-						"sudo",
-						"./simulator/injector",
-						strconv.FormatInt(int64(_nof_wi), 10),
-						tempFile.Name(),
-						enableInjectorVerbosity,
-					)
-					injCmd.Stdout = os.Stdout
-					injCmd.Stderr = os.Stderr
-					if err = injCmd.Run(); err != nil {
-						log.Printf("Injector cmd failed: %v", err)
-						break
-					}
 				}
-
-			}
-		}(ctx, pertCh, probeObjs, errChi, _nof_wi)
+			}(ctx, pertCh, probeObjs, errChi, _nof_wi)
+		}
 		// monitor simulation
 		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, _nof_ro)
 
