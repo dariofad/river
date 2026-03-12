@@ -30,21 +30,25 @@ list:
 	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=2 C=1" "# WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
 	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=3 C=3" "# WI: WI: [PANGLE, RPM], RO: [PANGLE, AF, CMODE, BANGLE]"
 
-monit:
+clean_cache:
+	@ echo "Cleaning the KeyValue cache..."
+	@ docker exec redis redis-cli DEL "simulation" "simulation:0"
+
+monit: clean_cache
 	cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json && \
 		python3 monit.py $(HOST) $(M) $(C)
 
-fals:
+fals: clean_cache
 	cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
 	python3 fals.py $(HOST) $(M) $(C)
 
-sign:
+sign: clean_cache
 	cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
 	chmod +x ../simulator/_utils/list_signals.py
 	../simulator/_utils/list_signals.py < ../simulator/config.json
 	python3 sign.py $(HOST) $(M) $(C)
 
-state:
+state: clean_cache
 	cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
 	chmod +x ../simulator/_utils/list_signals.py
 	../simulator/_utils/list_signals.py < ../simulator/config.json
