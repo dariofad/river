@@ -2,7 +2,7 @@ import numpy as np
 import random
 
 def monit_M1_C1_trajectory() -> dict:
-    drel = np.array([float(i)/1000 for i in range(801)], dtype=np.float64)
+    drel = np.array([float(i)/1000 for i in range(800)], dtype=np.float64)
     trajectory = dict()
     trajectory["DREL"] = drel.tolist()
     return trajectory
@@ -18,7 +18,7 @@ def monit_M3_C1_trajectory() -> dict:
     return trajectory
 
 def fals_M1_C1_trajectory() -> dict:
-    drel = np.array([float(i)/1000 for i in range(801)], dtype=np.float64)
+    drel = np.array([float(i)/1000 for i in range(800)], dtype=np.float64)
     trajectory = dict()
     trajectory["DREL"] = drel.tolist()
     return trajectory

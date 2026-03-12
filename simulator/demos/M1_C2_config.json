@@ -2,7 +2,7 @@
     "MODEL_PATH": "/home/dumb/git/git_unibg/sim2cpp/DualACC/dualACC",
     "TIMER_SYMBOL": "_ZN6egoCar4stepEv",
     "MINOR_TO_MAJOR_RATIO": "3",
-    "NOF_CYCLES": "801",
+    "NOF_CYCLES": "800",
     "WRITE_TIMING_I": {
 	"SYMBOL": "_ZN6egoCar4stepEv",
 	"OFFSET":  "418",
