@@ -1,0 +1,4 @@
+dash==4.0.0
+redis==7.3.0
+pandas==3.0.1
+plotly==6.6.0
