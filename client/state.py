@@ -7,6 +7,7 @@ import json
 import msgpack
 import socket
 import sys
+import time
 
 CYCLES : int = 0
 with open("../simulator/config.json", 'r', encoding='utf-8') as file:
@@ -19,7 +20,8 @@ MODEL = None
 CONFIG = None
 
 def srv_connect(host: str, model: int, config: int) -> bytearray:
-
+    global MODEL
+    global CONFIG
     # get the model-configuration-based trajectory 
     demo_fname = f"state_M{model}_C{config}_trajectory"
     demo_func = getattr(demos_config, demo_fname)
@@ -47,6 +49,8 @@ def srv_connect(host: str, model: int, config: int) -> bytearray:
         demo_func = getattr(demos_config, demo_fname)
         perturbations = demo_func(None, None)
         if perturbations is not None:
+                if MODEL == "2" and CONFIG == "1":
+                        time.sleep(3)
                 payload = msgpack.packb(perturbations)
                 if isinstance(payload, Sized):
                         sock.sendall(len(payload).to_bytes(4, 'big'))
@@ -70,6 +74,8 @@ def srv_connect(host: str, model: int, config: int) -> bytearray:
         return bytearray(f"ERROR: {type(e).__name__}: {e}".encode('utf-8'))
 
 def main():
+    global MODEL
+    global CONFIG
     parser = argparse.ArgumentParser(
         description="Connect to the simulation server via TCP",
     )

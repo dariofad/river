@@ -35,21 +35,21 @@ clean_cache:
 	@ docker exec redis redis-cli DEL "simulation" "simulation:0"
 
 monit: clean_cache
-	cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json && \
-		python3 monit.py $(HOST) $(M) $(C)
+	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+	@ python3 monit.py $(HOST) $(M) $(C)
 
 fals: clean_cache
-	cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
-	python3 fals.py $(HOST) $(M) $(C)
+	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+	@ python3 fals.py $(HOST) $(M) $(C)
 
 sign: clean_cache
-	cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
-	chmod +x ../simulator/_utils/list_signals.py
-	../simulator/_utils/list_signals.py < ../simulator/config.json
-	python3 sign.py $(HOST) $(M) $(C)
+	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+	@ chmod +x ../simulator/_utils/list_signals.py
+	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
+	@ python3 sign.py $(HOST) $(M) $(C)
 
 state: clean_cache
-	cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
-	chmod +x ../simulator/_utils/list_signals.py
-	../simulator/_utils/list_signals.py < ../simulator/config.json
-	python3 state.py $(HOST) $(M) $(C)
+	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+	@ chmod +x ../simulator/_utils/list_signals.py
+	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
+	@ python3 state.py $(HOST) $(M) $(C)
