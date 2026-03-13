@@ -20,7 +20,7 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
-	"github.com/dariofad/ebpf_simulator/my_types"
+	"github.com/dariofad/river/my_types"
 	"github.com/redis/go-redis/v9"
 )
 

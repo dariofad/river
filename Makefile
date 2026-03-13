@@ -1,7 +1,7 @@
 .phony: all build run generate vmlinux aslr_off redis start_redis stop_redis bench unsupervised
 
 EBPF_PROBE = probe
-GO_MODULE = ebpf_simulator
+GO_MODULE = river
 SIMULATOR_PATH := simulator
 REDIS_PORT := 6379
 

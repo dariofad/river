@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dariofad/ebpf_simulator/my_types"
-	"github.com/dariofad/ebpf_simulator/simulator"
+	"github.com/dariofad/river/my_types"
+	"github.com/dariofad/river/simulator"
 	"github.com/vmihailenco/msgpack/v5"
 )
 

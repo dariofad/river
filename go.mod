@@ -1,4 +1,4 @@
-module github.com/dariofad/ebpf_simulator
+module github.com/dariofad/river
 
 go 1.24.3
 

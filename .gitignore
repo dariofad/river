@@ -48,7 +48,7 @@ flycheck_*.el
 probe_bpf*
 
 # modules' binaries
-ebpf_simulator
+river
 
 # vmlinux
 vmlinux.h
