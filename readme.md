@@ -1,12 +1,6 @@
-# eBPF-based model/controller simulation
+# RIVER: An eBPF-based Runtime Verification Platform for Cyber-Physical Systems
 
-This repository implements a tool to execute Simulink models enabling
-monitoring, falsification (to search for counterexamples), and online
-perturbation of input signals and model state.  All the operations are
-non-intrusive thanks to eBPF, and can be performed without changing
-the model nor its source code.  To reproduce the results and the
-demos, check the instructions in the `server`, `simulator` and
-`client` folders.
+This repository implements a tool to execute Simulink models enabling monitoring, falsification (to search for counterexamples), online perturbation of input signals and model state (adversarial attacks), and runtime enforcement.  All the operations are non-intrusive thanks to eBPF, and can be performed without changing the model nor its source code. To reproduce the results and the demos, check the instructions in the `server`, `simulator` and `client` folders.
 
 ## Prerequisites
 
