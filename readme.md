@@ -38,10 +38,7 @@ staging area.
 The demos used to test the server use models from The current version
 uses several models from [this
 repo](https://github.com/dariofad/sim2cpp/tree/e793667428f6bcbce932c1cff87085ebca17d89e). It
-is also possible to interact with the server using a Matlab session
-(see
-[here](https://github.com/shincyou0916/Falsification-for-MPCACC-model-with-eBPF)
-for some code examples).
+is also possible to interact with the server using a Matlab session.
 
 ## Build and run the server
 
