@@ -4,6 +4,7 @@ EBPF_PROBE = probe
 GO_MODULE = river
 SIMULATOR_PATH := simulator
 REDIS_PORT := 6379
+ARCH:= $(shell go env GOARCH)
 
 all: run
 
@@ -23,8 +24,8 @@ state_pert_injector:
 		sudo setcap cap_bpf,cap_perfmon+ep $(SIMULATOR_PATH)/state_injector
 
 build: generate pert_injector state_pert_injector
-# with CGO_ENABLED=0 the build doesn't depend on libc
-	@CGO_ENABLED=0 GO_ARCH=amd64 go build
+# with CGO_ENABLED=0 the build do esn't depend on libc
+	CGO_ENABLED=0 GOARCH=$(ARCH) go build
 
 redis:
 	docker create --name redis -p $(REDIS_PORT):$(REDIS_PORT) redis:latest

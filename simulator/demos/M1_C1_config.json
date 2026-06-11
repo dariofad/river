@@ -1,35 +1,34 @@
 {
-    "MODEL_PATH": "/home/dumb/git/git_unibg/sim2cpp/DualACC/dualACC",
+    "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/DualACC/dualACC",
     "TIMER_SYMBOL": "_ZN6egoCar4stepEv",
     "MINOR_TO_MAJOR_RATIO": "3",
     "NOF_CYCLES": "800",
     "WRITE_TIMING_I": {
 	"SYMBOL": "_ZN6egoCar4stepEv",
-	"OFFSET":  "418",
+	"OFFSET":  "308",
 	"SIGNALS": [
 	    {
 		"SIGN_NAME": "DREL",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "55555556e350"
+		"SIGN_ADDR": "aaaaaaad0328"
 	    }
 	]
     }, 
     "READ_TIMING_I": null,
     "READ_TIMING_O": {
 	"SYMBOL": "_ZN6egoCar4stepEv",
-	"OFFSET":  "5131",
+	"OFFSET":  "3936",
 	"SIGNALS": [
 	    {
 		"SIGN_NAME": "AEGO",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "55555556e368"
+		"SIGN_ADDR": "aaaaaaad0340"
 	    },
 	    {
 		"SIGN_NAME": "VEGO",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "55555556e360"
+		"SIGN_ADDR": "aaaaaaad0338"
 	    }
 	]
     }
 }
-

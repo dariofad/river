@@ -1,53 +1,53 @@
 {
-    "MODEL_PATH": "/home/dumb/git/git_unibg/sim2cpp/DualACC/dualACC",
+    "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/DualACC/dualACC",
     "TIMER_SYMBOL": "_ZN6egoCar4stepEv",
     "MINOR_TO_MAJOR_RATIO": "3",
     "NOF_CYCLES": "451",
     "WRITE_TIMING_I": {
 	"SYMBOL": "_ZN6egoCar4stepEv",
-	"OFFSET":  "471",
+	"OFFSET":  "308",
 	"SIGNALS": [
 	    {
 		"SIGN_NAME": "DREL",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "55555556e350"
+		"SIGN_ADDR": "aaaaaaad0328"
 	    }
 	]
     }, 
     "READ_TIMING_I": null, 
     "READ_TIMING_O": {
 	"SYMBOL": "_ZN6egoCar4stepEv",
-	"OFFSET":  "5131",
+	"OFFSET":  "3936",
 	"SIGNALS": [
 	    {
 		"SIGN_NAME": "DREL",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "55555556e350"
+		"SIGN_ADDR": "aaaaaaad0328"
 	    },	    
 	    {
 		"SIGN_NAME": "AEGO",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "55555556e368"
+		"SIGN_ADDR": "aaaaaaad0340"
 	    },
 	    {
 		"SIGN_NAME": "VEGO",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "55555556e360"
+		"SIGN_ADDR": "aaaaaaad0338"
 	    },
 	    {
 		"SIGN_NAME": "VREL",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "55555556e358"
+		"SIGN_ADDR": "aaaaaaad0330"
 	    },
 	    {
 		"SIGN_NAME": "DLEAD",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "55555556e068"
+		"SIGN_ADDR": "aaaaaaad0318"
 	    },
 	    {
 		"SIGN_NAME": "APOS",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "55555556e498"
+		"SIGN_ADDR": "aaaaaaad0470"
 	    }
 	]
     }

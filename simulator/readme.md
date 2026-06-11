@@ -28,9 +28,11 @@ Input:
  ```
  Output:
   ```bash
- p &ego.egoCar_Y.d_rel  
+p &ego.egoCar_Y.d_rel  
 p &ego.egoCar_Y.a_ego
 p &ego.egoCar_Y.v_ego
+p &ego.egoCar_U.d_lead
+p &ego.egoCar_X.Integrator1_CSTATE
 offset: info line egoCar.cpp:2551
  ```
 
