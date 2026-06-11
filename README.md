@@ -4,22 +4,23 @@ This repository implements a tool to execute Simulink models enabling monitoring
 
 ## Prerequisites
 
-Development platform: Ubuntu 24.04 LTS (kernel newer than v6.1)
+Development platform: Ubuntu 24.04 LTS, 26.04 LTS (kernel must be newer than v6.1)
+Supported architectures: x86, arm64
 
 Developed and tested with the following tools:
 
-- `GNU  gdb` 15.0.50
-- `GNU  objdumb` 2.42
-- `GNU  readelf` 2.42
-- `GNU Make` 4.3
-- `bpftool` 7.4.0 (with `libbpf` 1.4)
-- `g++` 13.3.3
-- `go` 1.24.3
-- `llvm-strip` 18.1.3
-- `llvm` 18.1.3
-- `clang` 18.1.3
-- `clang-format` 18.1.3
-- `docker ` 28.4.0
+- `GNU  gdb` 17.1
+- `GNU  objdump` 2.46
+- `GNU  readelf` 2.46
+- `GNU Make` 4.4.1
+- `bpftool` 7.7.0 (with `libbpf` 1.7)
+- `g++` 15.2.0
+- `go` 1.26.4
+- `llvm-strip` 21.1.8
+- `llvm` 21.1.8
+- `clang` 21.1.8
+- `clang-format` 21.1.8
+- `docker ` 29.5.3
 
 After, install:
 
