@@ -102,7 +102,7 @@ def state_M2_C1_trajectory(CYCLES=0) -> dict:
 def state_M2_C1_perturbation(PERIOD=0, ITERNO=0) -> list:
     TIME = np.uint32(5).item()
     VALUE_SIZE = np.uint32(8).item()
-    ADDR = np.uint64(0x555555558040).item()
+    ADDR = np.uint64(0xaaaaaaac0018).item()
     VALUE = np.uint64(50).item()
     perturbation = dict()
     perturbation["TIME"] = TIME
@@ -122,7 +122,7 @@ def state_M3_C3_trajectory(CYCLES=0) -> dict:
 def state_M3_C3_perturbation(PERIOD=0, ITERNO=0) -> list | None:
     TIME = np.uint32(50).item()
     VALUE_SIZE = np.uint32(8).item()
-    ADDR = np.uint64(0x5555555682b0).item()
+    ADDR = np.uint64(0xaaaaaaad0278).item()
     VALUE = np.float64(16).item()
     perturbation = dict()
     perturbation["TIME"] = TIME

@@ -1,48 +1,48 @@
 {
-    "MODEL_PATH": "/home/dumb/git/git_unibg/sim2cpp/ToyModel/Simulink2Code_ert_rtw/Simulink2Code",
+    "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/ToyModel/Simulink2Code_ert_rtw/Simulink2Code",
     "TIMER_SYMBOL": "_Z10rt_OneStepv",
     "MINOR_TO_MAJOR_RATIO": "1",
     "NOF_CYCLES": "20",
     "WRITE_TIMING_I": null, 
     "READ_TIMING_I": {
 	"SYMBOL": "_Z10rt_OneStepv",
-	"OFFSET":  "64",
+	"OFFSET":  "80",
 	"SIGNALS": [
 	    {
 		"SIGN_NAME": "X",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "555555558048"
+		"SIGN_ADDR": "aaaaaaac0020"
 	    },	    
 	    {
 		"SIGN_NAME": "Y",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "555555558050"
+		"SIGN_ADDR": "aaaaaaac0028"
 	    }
 	]
     },
     "READ_TIMING_O": {
 	"SYMBOL": "_Z10rt_OneStepv",
-	"OFFSET":  "79",
+	"OFFSET":  "92",
 	"SIGNALS": [
 	    {
 		"SIGN_NAME": "X",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "555555558048"
+		"SIGN_ADDR": "aaaaaaac0020"
 	    },	    
 	    {
 		"SIGN_NAME": "Y",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "555555558050"
+		"SIGN_ADDR": "aaaaaaac0028"
 	    },	    
 	    {
 		"SIGN_NAME": "RES",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "555555558058"
+		"SIGN_ADDR": "aaaaaaac0030"
 	    },	    
 	    {
 		"SIGN_NAME": "MOFFSET",
 		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "555555558040"
+		"SIGN_ADDR": "aaaaaaac0018"
 	    }
 	]
     }
