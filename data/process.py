@@ -2,6 +2,7 @@
 import argparse
 import json
 from typing import Dict
+import subprocess
 
 maps = {
     "uprobe_read_i",
@@ -60,7 +61,7 @@ def parse_stats(filename: str, configuration: str) -> (Dict, Dict):
         print(f"Error: Could not decode JSON from the file.")
     return (config, stats)
 
-def print_stats(config:dict, stats: dict):
+def extract_stats(config:dict, stats: dict):
     for up in sorted(maps):
         print("---")
         if not stats.get(up, False):
@@ -80,12 +81,14 @@ def print_stats(config:dict, stats: dict):
                 print(f"avg_runtime_ps_est:\t{estimate_ps/1000:.3f} µs")                
                 
 def main():
-    parser = argparse.ArgumentParser(description='Summarize bpftool stats')
+    parser = argparse.ArgumentParser(description='Collects eBPF program data with bpftool and computes performance statistics')
     parser.add_argument('--filename', type=str, help='bpftool JSON report file')
     parser.add_argument('--configuration', type=str, help='configuration')    
     args = parser.parse_args()
-    config, stats = parse_stats(args.filename, args.configuration)
-    print_stats(config, stats)
+    with open(args.filename + ".json", "w") as f:
+        subprocess.run(["sudo", "bpftool", "prog", "list", "--json", "--pretty"], stdout=f, stderr=subprocess.STDOUT)
+    config, stats = parse_stats(args.filename + ".json", args.configuration)
+    extract_stats(config, stats)
 
 if __name__ == "__main__":
     main()
