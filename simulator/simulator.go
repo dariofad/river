@@ -549,7 +549,10 @@ func Start(
 					select {
 					case <-ctx.Done():
 						return
-					case perturbation := <-statePertCh:
+					case perturbation, ok := <-statePertCh:
+						if !ok {
+							break // the simulation is still running but the channel was closed
+						}
 						// write records to a temp file
 						tempFile, err := os.CreateTemp("", "model_state_records_*.bin")
 						if err != nil {
@@ -637,7 +640,10 @@ func Start(
 					select {
 					case <-ctx.Done():
 						return
-					case perturbation := <-pertCh:
+					case perturbation, ok := <-pertCh:
+						if !ok {
+							break // the simulation is still running but the channel was closed
+						}
 						// extract perturbation records
 						pertRecords, err := extractPerturbationRecords(perturbation, simData)
 						if err != nil {

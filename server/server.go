@@ -58,7 +58,7 @@ func StartService(port uint16, srv my_types.Service) {
 func timeTrack(start time.Time, name string) {
 
 	elapsed := time.Since(start)
-	fmt.Printf("|__func %s took %.3f ms\n", name, float64(elapsed.Nanoseconds())/1e6)
+	log.Printf("|__func %s took %.3f ms\n", name, float64(elapsed.Nanoseconds())/1e6)
 }
 
 // Reads the connection incoming data. Returns the received data
@@ -303,7 +303,6 @@ func readStatePerturbationFromNet(ctx context.Context, conn net.Conn, ch chan<- 
 		if err != nil {
 			return
 		}
-		_ = rawPerturbation
 		// send ack to client
 		sendSimulationAck(conn, []byte("Perturbation received correctly"))
 		// send data to the injector via channel
@@ -398,7 +397,6 @@ func readPerturbationFromNet(ctx context.Context, conn net.Conn, ch chan<- map[s
 		if err != nil {
 			return
 		}
-		_ = rawPerturbation
 		// send ack to client
 		sendSimulationAck(conn, []byte("Perturbation received correctly"))
 		// send data to the injector via channel
