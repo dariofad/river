@@ -16,7 +16,6 @@ import (
 
 var VERBOSE bool
 var BENCH bool
-var UNSUPERVISED bool
 var MONITORING_PORT uint16 = 8080
 var FALSIFICATION_PORT uint16 = 8081
 var STATE_PERTURBATION_PORT uint16 = 8082
@@ -43,17 +42,13 @@ func parseCmdLineOptions() {
 
 	verbP := flag.Bool("v", false, "Enable verbose mode")
 	benchP := flag.Bool("b", false, "Enable bench mode")
-	unsubP := flag.Bool("u", false, "Enable unsupervised mode")
 	flag.Parse()
 	VERBOSE = *verbP
 	BENCH = *benchP
-	UNSUPERVISED = *unsubP
 	server.VERBOSE = VERBOSE
 	simulator.VERBOSE = VERBOSE
 	server.BENCH = BENCH
 	simulator.BENCH = BENCH
-	server.UNSUPERVISED = UNSUPERVISED
-	simulator.UNSUPERVISED = UNSUPERVISED
 
 }
 
