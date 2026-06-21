@@ -16,6 +16,7 @@ Developed and tested with the following tools:
 - `bpftool` 7.7.0 (with `libbpf` 1.7)
 - `g++` 15.2.0
 - `go` 1.26.4
+- [`uv`](https://github.com/astral-sh/uv)
 - `llvm-strip` 21.1.8
 - `llvm` 21.1.8
 - `clang` 21.1.8
@@ -26,6 +27,11 @@ After, install:
 
 - Linux headers files `sudo apt install linux-headers-generic`, `sudo ln -sf /usr/include/asm-generic/ /usr/include/asm`
 - eBPF headers `sudo apt install libbpf-dev`
+
+## Python tooling
+
+- Install the workspace dependencies with `uv sync`
+- Install the workspace dependencies plus development tools with `uv sync --dev`
 
 ## Code style
 
