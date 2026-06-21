@@ -36,20 +36,20 @@ clean_cache:
 
 monit: clean_cache
 	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
-	@ uv run --project .. monit.py $(HOST) $(M) $(C)
+	@ uv run monit.py $(HOST) $(M) $(C)
 
 fals: clean_cache
 	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
-	@ uv run --project .. fals.py $(HOST) $(M) $(C)
+	@ uv run fals.py $(HOST) $(M) $(C)
 
 sign: clean_cache
 	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
-	@ uv run --project .. sign.py $(HOST) $(M) $(C)
+	@ uv run sign.py $(HOST) $(M) $(C)
 
 state: clean_cache
 	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
-	@ uv run --project .. state.py $(HOST) $(M) $(C)
+	@ uv run state.py $(HOST) $(M) $(C)

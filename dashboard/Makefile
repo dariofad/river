@@ -1,4 +1,4 @@
 .DEFAULT_GOAL := dash
 
 dash:
-	@ uv run --project .. dashboard.py
+	@ uv run dashboard.py
