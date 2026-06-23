@@ -1,0 +1,29 @@
+[project]
+name = "river"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "dash==4.0.0",
+    "matplotlib==3.10.8",
+    "msgpack==1.1.2",
+    "numpy==2.4.6",
+    "pandas==3.0.1",
+    "plotly==6.6.0",
+    "redis==7.3.0",
+]
+
+[dependency-groups]
+dev = [
+    "nodeenv==1.10.0",
+    "platformdirs==4.5.1",
+    "pyright==1.1.407",
+    "pysort==1.0.0",
+    "typing-extensions==4.15.0",
+    "yapf==0.43.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["client", "dashboard"]

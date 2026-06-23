@@ -61,3 +61,7 @@ notes.md
 
 # stats
 _stats.csv
+
+# Python
+.venv/
+__pycache__/
