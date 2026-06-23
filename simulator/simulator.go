@@ -379,7 +379,7 @@ func Start(
 		uprobe_ri, err := modelExecutable.Uprobe(
 			simData.RTimingI.SymbolName,
 			probeObjs.UprobeReadI,
-			&link.UprobeOptions{Offset: offset},
+			&link.UprobeOptions{Offset: offset, Cookie: 77},
 		)
 		if err != nil {
 			log.Printf("Error setting the uprobe_ri: %v", err)

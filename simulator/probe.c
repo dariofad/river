@@ -400,7 +400,7 @@ static inline int copy_user_space_value_to_map(__u32 actual_time, __u32 key, __u
         return 0;
 }
 
-static inline int read_signals(__u32 nof_signals, __u32 key_offset, __u16 IS_OUTPUT) {
+static inline int read_signals(__u32 nof_signals, __u64 cookie, __u32 key_offset, __u16 IS_OUTPUT) {
 
         if (nof_signals > MAX_NOF_SIGNALS) {
                 DEBUG_P("\tERR, too many signals to read");
@@ -481,13 +481,15 @@ static inline int read_signals(__u32 nof_signals, __u32 key_offset, __u16 IS_OUT
 }
 
 SEC("uretprobe/read_i")
-int uprobe_read_i() {
+int uprobe_read_i(struct pt_regs *ctx) {
 
         if (!IS_MAJOR) { // skip the rest of the program if not major step
                 return 0;
         } else {
                 __u32 actual_time = time - 1;
                 DEBUG_P("READ_INPUT, time: %d", actual_time);
+                __u64 cookie = bpf_get_attach_cookie(ctx);
+                bpf_printk("Cookie: %d", cookie);
                 return read_signals(NOF_RISIGNALS, NOF_WISIGNALS, 0);
         }
 }
