@@ -1,7 +1,7 @@
 [project]
 name = "river"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "dash==4.0.0",
     "matplotlib==3.10.8",
@@ -16,10 +16,11 @@ dependencies = [
 dev = [
     "nodeenv==1.10.0",
     "platformdirs==4.5.1",
-    "pyright==1.1.407",
     "pysort==1.0.0",
     "typing-extensions==4.15.0",
-    "yapf==0.43.0",
+    "ruff==0.12.0",
+    "pyright==1.1.407",
+    "pre-commit>=4.6.0",
 ]
 
 [tool.uv]
@@ -27,3 +28,15 @@ package = false
 
 [tool.uv.workspace]
 members = ["client", "dashboard"]
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = []
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.14"

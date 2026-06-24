@@ -32,10 +32,7 @@ After, install:
 
 ## Code style
 
-After cloning the repository run `git config --local core.hooksPath
-githooks`. This enables a script to format C source files with clangd
-at commit time. Formatted files must be manually re-added to the
-staging area.
+After cloning the repository, install the local dependencies and set the virtual environment `uv sync`. Then, hook up pre-commit to the local git lifecycle with `uv run pre-commit install`. This ensures the code is formatted before it is pushed to the repository. 
 
 ## Demos
 

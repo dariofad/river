@@ -1,0 +1,38 @@
+minimum_pre_commit_version: "3.7.0"
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: gofmt
+        entry: gofmt -w
+        language: system
+        types_or: [go]
+        require_serial: true
+
+      - id: clang-format
+        name: clang-format (C/C++)
+        entry: githooks/pre-commit
+        language: system
+        files: \.(c|cc|cpp|h|hpp)$
+        pass_filenames: false
+
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --no-sync ruff check --fix
+        language: system
+        types_or: [python]
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --no-sync ruff format
+        language: system
+        types_or: [python]
+
+      - id: pyright
+        name: pyright
+        entry: uv run --no-sync pyright
+        language: system
+        files: \.py$
+        pass_filenames: false
