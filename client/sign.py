@@ -1,49 +1,47 @@
 #!/usr/bin/env python3
 
-from typing import Sized
 import argparse
-import demos_config
 import json
-import msgpack
 import random
 import socket
 import sys
 import time
 
-CYCLES : int = 0
-with open("../simulator/config.json", 'r', encoding='utf-8') as file:
-        CYCLES = int(json.load(file)["NOF_CYCLES"])
-INJECTIONS : int = 0
+import demos_config
+import msgpack
+
+CYCLES: int = 0
+with open("../simulator/config.json", encoding="utf-8") as file:
+    CYCLES = int(json.load(file)["NOF_CYCLES"])
+INJECTIONS: int = 0
 
 PORT = 8083
 HOST = None
 MODEL = None
 CONFIG = None
 
-def srv_connect(host: str, model: int, config: int) -> bytearray:
 
-    # get the model-configuration-based trajectory 
+def srv_connect(host: str, model: str, config: str) -> bytearray:
+    # get the model-configuration-based trajectory
     demo_fname = f"sign_M{model}_C{config}_trajectory"
     demo_func = getattr(demos_config, demo_fname)
     trajectory = demo_func(CYCLES)
-    payload = msgpack.packb(trajectory)    # prepare the trace
+    payload = msgpack.packb(trajectory)  # prepare the trace
+    if not isinstance(payload, bytes):
+        raise TypeError("msgpack.packb returned a non-bytes payload")
     try:
         # Create TCP socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         print(f"[*] Connecting to {host}:{PORT}...", file=sys.stderr)
         # Connect to server
         sock.connect((host, PORT))
-        print(f"[+] Connected successfully!", file=sys.stderr)
+        print("[+] Connected successfully!", file=sys.stderr)
         # Send the initial trajectory
-        if isinstance(payload, Sized):
-            sock.sendall(len(payload).to_bytes(4, 'big'))
-            sock.sendall(payload)
-        else:
-            print("Error with payload type")
-            exit(1)
+        sock.sendall(len(payload).to_bytes(4, "big"))
+        sock.sendall(payload)
         # wait for simulation started ack
         response = sock.recv(64)
-        print(response.decode('utf-8'))
+        print(response.decode("utf-8"))
         # Send a couple of perturbations
         for ITERNO in range(INJECTIONS):
             # inject a perturbation
@@ -53,40 +51,39 @@ def srv_connect(host: str, model: int, config: int) -> bytearray:
             demo_func = getattr(demos_config, demo_fname)
             perturbation = demo_func(PERIOD, ITERNO)
             if perturbation is None:
-                    break
+                break
             payload = msgpack.packb(perturbation)
-            if isinstance(payload, Sized):
-                sock.sendall(len(payload).to_bytes(4, 'big'))
-                sock.sendall(payload)
-            else:
-                print("Error with payload type")
-                exit(1)
+            if not isinstance(payload, bytes):
+                raise TypeError("msgpack.packb returned a non-bytes payload")
+            sock.sendall(len(payload).to_bytes(4, "big"))
+            sock.sendall(payload)
             # wait for ack
             response = sock.recv(64)
-            print(response.decode('utf-8'))
+            print(response.decode("utf-8"))
             # random sleep (between 1 and 6 seconds)
             if ITERNO + 1 != INJECTIONS:
                 time.sleep(random.randint(1, PERIOD // 2))
         # wait for final response
-        response = sock.recv(64)        
+        response = sock.recv(64)
         # Close the socket
         sock.close()
         return bytearray(response)
     except ConnectionRefusedError:
-        return bytearray(f"ERROR: Connection refused by {host}:{PORT}".encode('utf-8'))
+        return bytearray(f"ERROR: Connection refused by {host}:{PORT}".encode())
     except socket.gaierror as e:
-        return bytearray(f"ERROR: Could not resolve hostname '{host}': {e}".encode('utf-8'))
+        return bytearray(f"ERROR: Could not resolve hostname '{host}': {e}".encode())
     except Exception as e:
-        return bytearray(f"ERROR: {type(e).__name__}: {e}".encode('utf-8'))
+        return bytearray(f"ERROR: {type(e).__name__}: {e}".encode())
 
-def main():
+
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Connect to the simulation server via TCP",
     )
-    parser.add_argument('host', help='Server hostname or IP address')
-    parser.add_argument('model', help='Model id')
-    parser.add_argument('config', help='Config id')        
-    
+    parser.add_argument("host", help="Server hostname or IP address")
+    parser.add_argument("model", help="Model id")
+    parser.add_argument("config", help="Config id")
+
     args = parser.parse_args()
     HOST = args.host
     MODEL = args.model
@@ -100,9 +97,10 @@ def main():
     INJECTIONS = 2 if int(MODEL) == 2 else 1
     print(f"cycles:\t{CYCLES}")
     print(f"injections:\t{INJECTIONS}")
-    
+
     result = srv_connect(HOST, MODEL, CONFIG)
-    print(result.decode('utf-8'))
+    print(result.decode("utf-8"))
+
 
 if __name__ == "__main__":
     main()
