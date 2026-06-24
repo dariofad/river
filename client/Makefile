@@ -17,18 +17,20 @@ list:
 	@echo '1 --- EgoCar'
 	@echo '2 --- Signal Addition'
 	@echo '3 --- Abstract Fuel Control'
+	@echo '4 --- Uprobe multi test model'
 	@echo 'LIST OF DEMOS AVAILABLE:'
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(MONIT)" "M=1 C=1" "# WI: [DREL], RO: [AEGO, VEGO]"
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(MONIT)" "M=2 C=2" "# RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(MONIT)" "M=3 C=1" "# WI: [PANGLE], RO: [PANGLE, AF, CMODE]"
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(FALS)"  "M=1 C=1" "# WI: [DREL], RO: [AEGO, VEGO]"
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(FALS)"  "M=2 C=1" "# WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(FALS)"  "M=3 C=2" "# WI: [PANGLE, RPM], RO: [PANGLE, AF, CMODE]"
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=1 C=2" "# WI: [DREL], RO: [DREL, AEGO, VEGO]"
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=2 C=1" "# WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=3 C=2" "# WI: [PANGLE, RPM], RO: [PANGLE, AF, CMODE]"
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=2 C=1" "# WI: [X, Y], RI: [X, Y], RO: [X, Y, RES, MOFFSET]"
-	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=3 C=3" "# WI: WI: [PANGLE, RPM], RO: [PANGLE, AF, CMODE, BANGLE]"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(MONIT)" "M=1 C=1"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(MONIT)" "M=2 C=2"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(MONIT)" "M=3 C=1"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(MONIT)" "M=4 C=1"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(FALS)"  "M=1 C=1"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(FALS)"  "M=2 C=1"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(FALS)"  "M=3 C=2"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=1 C=2"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=2 C=1"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=3 C=2"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=2 C=1"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=3 C=3"
 
 clean_cache:
 	@ echo "Cleaning the KeyValue cache..."
@@ -36,6 +38,8 @@ clean_cache:
 
 monit: clean_cache
 	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+	@ chmod +x ../simulator/_utils/list_signals.py
+	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
 	@ uv run monit.py $(HOST) $(M) $(C)
 
 fals: clean_cache

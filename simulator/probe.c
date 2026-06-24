@@ -17,23 +17,8 @@
 #endif
 
 const __u32 MAX_NOF_SIGNALS = 16;
-
-// interactivity
-struct {
-        __uint(type, BPF_MAP_TYPE_ARRAY);
-        __uint(max_entries, 1);
-        __type(key, u32);
-        __type(value, u16);
-} interactive_map SEC(".maps");
-static __u16 get_interactive(void) {
-        u32 key    = 0;
-        __u16 *val = bpf_map_lookup_elem(&interactive_map, &key);
-        return val ? *val : 0;
-}
-
-volatile const __u32 NOF_WISIGNALS;
-volatile const __u32 NOF_RISIGNALS;
-volatile const __u32 NOF_ROSIGNALS;
+volatile const __u32 NOF_SIGNALS_READ;    // max is currently 8
+volatile const __u32 NOF_SIGNALS_WRITTEN; // max is currently 8
 
 // timing
 volatile const __u32 MINOR_TO_MAJOR_RATIO;
@@ -46,36 +31,29 @@ volatile const __u32 MAX_CYCLES;
 __u64 stash[16]; // hardcoded
 
 // -----------------------------------------------------------------------
-// MAPS TO STORE SIGNALS
-// single trace
-struct m_signal {
+// SIGNAL DATA
+// Discrete time signal values
+struct sequence {
         __uint(type, BPF_MAP_TYPE_ARRAY);
-        __type(key, __u32);
-        __type(value, __u64);      // use __u64 to store an ieee754 value
+        __type(key, __u32);        // time
+        __type(value, __u64);      // ieee754-formatted  value stored in a __u64
         __uint(max_entries, 4096); // NB adjust before simulating the model
 };
-// traces by signal key
-struct m_signals {
+// Discrete model trajectory
+struct trajectory {
         __uint(type, BPF_MAP_TYPE_HASH_OF_MAPS);
         __type(key, __u32);
         __type(value, __u32); // FD
         __uint(max_entries, 4096);
-        __array(values, struct m_signal);
-} tracee_map SEC(".maps");
-// addresses by signal key
+        __array(values, struct sequence);
+} trajectory_map SEC(".maps");
+// Addresses by signal key
 struct {
         __uint(type, BPF_MAP_TYPE_ARRAY);
         __type(key, __u32);
         __type(value, __u64);
         __uint(max_entries, 4096); // NB adjust before simulating the model
 } address_map SEC(".maps");
-// types by signal key (0 write_i, 1 read_i, 2 read_o)
-struct {
-        __uint(type, BPF_MAP_TYPE_ARRAY);
-        __type(key, __u32);
-        __type(value, __u32);
-        __uint(max_entries, 4096); // NB adjust before simulating the model
-} type_map SEC(".maps");
 
 // -----------------------------------------------------------------------
 //
@@ -95,7 +73,7 @@ struct {
 } out_rb SEC(".maps");
 
 // user -> kernel space ring buffer for noise injection
-struct pert_record { // todo: use a structure with dynamic len
+struct live_record { // todo: use a structure with dynamic len
         __u32 time;
         __u32 filler;
         __u64 values[8]; // hardcoded
@@ -264,27 +242,27 @@ struct i_loop_ctx {
         __u64 inj_pert;
 };
 
-static long inj_signals(u64 index, void *_ctx) {
+static long inject_values(u64 index, void *_ctx) {
 
         struct i_loop_ctx *ctx = _ctx;
         __u32 skey             = (__u32)index;
 
-        void *sign_trace = bpf_map_lookup_elem(&tracee_map, &skey);
-        if (!sign_trace) {
-                DEBUG_P("\tERR retrieving sign_trace map");
+        void *sequence = bpf_map_lookup_elem(&trajectory_map, &skey);
+        if (!sequence) {
+                DEBUG_P("\tERR retrieving sequence map");
                 return 1;
         }
 
-        // get the perturbation value
-        __u64 *pert = bpf_map_lookup_elem(sign_trace, &(ctx->time));
+        // get the value injected from userspace
+        __u64 *pert = bpf_map_lookup_elem(sequence, &(ctx->time));
         if (!pert) {
-                DEBUG_P("\tERR retrieving the signal trace (urb draining)");
+                DEBUG_P("\tERR retrieving the sequence value (urb draining)");
                 return 1;
         } else {
-                // add injected value to initial perturbation
-                DEBUG_P("\tsign_key %d, initial: %llu, added: %llu", skey, *pert, ctx->inj_pert);
+                // add injected value to the desired trajectory sequence
+                DEBUG_P("\ttime_key %d, initial: %llu, added: %llu", skey, *pert, ctx->inj_pert);
                 ctx->inj_pert = ieee754_add(ctx->inj_pert, *pert);
-                int err = bpf_map_update_elem(sign_trace, &(ctx->time), &(ctx->inj_pert), BPF_ANY);
+                int err = bpf_map_update_elem(sequence, &(ctx->time), &(ctx->inj_pert), BPF_ANY);
                 if (err != 0) {
                         DEBUG_P("\t\t-> failed injection, ERR: %d", err);
                         return 1;
@@ -296,121 +274,96 @@ static long inj_signals(u64 index, void *_ctx) {
         return 0;
 }
 
-static long extract_injected_pert(struct bpf_dynptr *dynptr, __u32 *_nof_pert_signals) {
+static long get_injected_point_from_usp(struct bpf_dynptr *dynptr, __u32 *placeholder) {
 
-        struct pert_record *DRAINED_RECORD;
-        DRAINED_RECORD = bpf_dynptr_data(dynptr, 0, 8 + 8 * 8);
-        if (!DRAINED_RECORD) {
+        struct live_record *R;
+        R = bpf_dynptr_data(dynptr, 0, 8 + 8 * 8);
+        if (!R) {
                 return 0;
         }
 
         struct i_loop_ctx ctx = {
-            .time = DRAINED_RECORD->time,
+            .time = R->time,
         };
 
         __u32 actual_time = time - 1;
-        if (actual_time > DRAINED_RECORD->time) {
-                bpf_printk("LIVE PERTURBATION, time: %d [late] -->> %d", actual_time,
-                           DRAINED_RECORD->time);
+        if (actual_time > R->time) {
+                bpf_printk("LIVE INJECTION, time: %d [late] -->> %d", actual_time, R->time);
                 return DRAIN_SINGLE_POINT;
         } else {
-                bpf_printk("LIVE PERTURBATION, time: %d [on time] (affects time: %d)", actual_time,
-                           DRAINED_RECORD->time);
+                bpf_printk("LIVE INJECTION, time: %d [on time] (affects time: %d)", actual_time,
+                           R->time);
         }
 
 #pragma unroll
         for (int i = 0; i < 8; ++i) { // hardcoded
-                if (i >= NOF_WISIGNALS)
+                if (i >= NOF_SIGNALS_WRITTEN)
                         break;
-                ctx.inj_pert = DRAINED_RECORD->values[i];
-                inj_signals(i, &ctx);
+                ctx.inj_pert = R->values[i];
+                inject_values(i, &ctx);
         }
 
         return DRAIN_SINGLE_POINT;
 }
 
-static long extract_injected_state_pert(struct bpf_dynptr *dynptr, __u32 placeholder) {
+static long get_injected_stateval_from_usp(struct bpf_dynptr *dynptr, __u32 placeholder) {
 
-        struct state_record *DRAINED_RECORD;
-        DRAINED_RECORD = bpf_dynptr_data(dynptr, 0, 8 + 2 * 8);
-        if (!DRAINED_RECORD) {
+        struct state_record *SR;
+        SR = bpf_dynptr_data(dynptr, 0, 8 + 2 * 8);
+        if (!SR) {
                 return 0;
         }
 
         __u32 actual_time = time - 1;
-        if (actual_time > DRAINED_RECORD->time) {
-                bpf_printk("LIVE STATE PERTURBATION, time: %d [late]", actual_time);
+        if (actual_time > SR->time) {
+                bpf_printk("LIVE STATE INJECTION, time: %d [late]", actual_time);
                 return DRAIN_SINGLE_POINT;
         } else {
-                bpf_printk("LIVE STATE PERTURBATION, time: %d [on time] (affects time: %d)",
-                           actual_time, DRAINED_RECORD->time);
+                bpf_printk("LIVE STATE INJECTION, time: %d [on time] (affects time: %d)",
+                           actual_time, SR->time);
         }
 
-        struct state_record_trimmed srt = {
-            .addr  = DRAINED_RECORD->addr,
-            .value = DRAINED_RECORD->value,
+        struct state_record_trimmed SRT = {
+            .addr  = SR->addr,
+            .value = SR->value,
         };
         // transfer the state record to a map
-        int err = bpf_map_update_elem(&state_trace, &DRAINED_RECORD->time, &srt, BPF_ANY);
+        int err = bpf_map_update_elem(&state_trace, &SR->time, &SRT, BPF_ANY);
         if (err != 0) {
-                DEBUG_P("\tERR: cannot save the state perturbation at time %d",
-                        DRAINED_RECORD->time);
+                DEBUG_P("\tERR: cannot save the state perturbation at time %d", SR->time);
         } else {
-                DEBUG_P("\t-> saved value: %llu (address: %llu)", srt.value, srt.addr);
+                DEBUG_P("\t-> saved value: %llu (address: %llu)", SRT.value, SRT.addr);
         }
 
         return DRAIN_SINGLE_POINT;
 }
 
-SEC("uretprobe/timer")
-int uprobe_timer() {
+static inline int flush() {
 
-        // determine if the current cyclic is a major step
-        if (minor_step % MINOR_TO_MAJOR_RATIO == 0) {
-                IS_MAJOR = 1;
-                time++;
-        } else {
-                IS_MAJOR = 0;
-        }
-        minor_step++;
-        if (time > MAX_CYCLES) {
-                DEBUG_P("\tLOGGED %d RECORDS", log_counter - 1);
-                DEBUG_P("\tSIGKILL SENT TO PROCESS");
-                bpf_send_signal(SIGKILL);
-                return 0;
-        }
-        return 0;
-}
-
-static inline int copy_user_space_value_to_map(__u32 actual_time, __u32 key, __u64 signal) {
-
-        struct m_signal *sign_trace = (struct m_signal *)bpf_map_lookup_elem(&tracee_map, &key);
-        if (sign_trace == NULL) {
-                DEBUG_P("\tERR retrieving sign_trace map");
+        DEBUG_P("Start flushing...");
+        // flush the stash to the cache
+        struct model_record *r;
+        // reserve memory in the ring buffer
+        r = bpf_ringbuf_reserve(&out_rb,
+                                sizeof(struct model_record) + NOF_SIGNALS_READ * sizeof(__u64), 0);
+        if (r == NULL) {
+                DEBUG_P("\tERR, failed to reserve rb memory");
                 return -1;
         }
-        // update the signal trace
-        int err = bpf_map_update_elem(sign_trace, &actual_time, &signal, BPF_ANY);
-        if (err != 0) {
-                DEBUG_P("\tERR, cannot copy value of sign_key %d to trace", key);
-                return -1;
-        } else {
-                DEBUG_P("\t\t-> value copied to trace");
+        r->time   = time - 1; // actual time
+        r->filler = 0;
+        // it is implemented this way since it avoids automatic
+        // rewriting and consequent program rejection by the
+        // verifier
+        for (__u32 k = 0; k < MAX_NOF_SIGNALS; k++) {
+                if (k < NOF_SIGNALS_READ)
+                        r->values[k] = stash[k];
         }
-        return 0;
-}
+        // commit to the rb
+        bpf_ringbuf_submit(r, BPF_RB_NO_WAKEUP);
+        log_counter++;
+        DEBUG_P("\t\t-> output record committed to the ring buffer");
 
-static inline int read_signals(__u32 nof_signals, __u64 cookie, __u32 key_offset, __u16 IS_OUTPUT) {
-
-        if (nof_signals > MAX_NOF_SIGNALS) {
-                DEBUG_P("\tERR, too many signals to read");
-                return -1;
-        }
-
-        // determine the correct simulation time
-        __u32 actual_time = time - 1;
-        // check interactivity
-        __u16 INTERACTIVE = get_interactive();
         // clean stash (hardcoded)
         stash[0]  = 0;
         stash[1]  = 0;
@@ -429,11 +382,63 @@ static inline int read_signals(__u32 nof_signals, __u64 cookie, __u32 key_offset
         stash[14] = 0;
         stash[15] = 0;
 
-        DEBUG_P("\tnof signals to read: %d", nof_signals);
+        // send SIGKILL after last flush
+        if (time == MAX_CYCLES) {
+                DEBUG_P("\tLOGGED %d RECORDS", log_counter);
+                DEBUG_P("\tSIGKILL SENT TO PROCESS");
+                bpf_send_signal(SIGKILL);
+                return 0;
+        }
+
+        return 0;
+}
+
+SEC("uretprobe/timer")
+int uprobe_timer() {
+
+        // determine if the current cyclic is a major step
+        if (minor_step % MINOR_TO_MAJOR_RATIO == 0) {
+                IS_MAJOR = 1;
+                time++;
+        } else {
+                IS_MAJOR = 0;
+        }
+        minor_step++;
+
+        return 0;
+}
+
+static inline int copy_user_space_value_to_map(__u32 actual_time, __u32 key, __u64 value) {
+
+        struct sequence *seq = (struct sequence *)bpf_map_lookup_elem(&trajectory_map, &key);
+        if (seq == NULL) {
+                DEBUG_P("\tERR retrieving sequence map");
+                return -1;
+        }
+        // update the sequence
+        int err = bpf_map_update_elem(seq, &actual_time, &value, BPF_ANY);
+        if (err != 0) {
+                DEBUG_P("\tERR, cannot copy value to sequence at time %d", key);
+                return -1;
+        } else {
+                DEBUG_P("\t\t-> value copied to trace");
+        }
+        return 0;
+}
+
+static inline int read_signals(__u64 cookie) {
+
+        // determine the correct simulation time
+        __u32 actual_time = time - 1;
+        // extract signals within the current group
+        __u32 group_base = (__u32)cookie >> 4;
+        __u32 group_size = (__u32)cookie & 0b1111;
+        DEBUG_P("\tgroup %d, there are %d signals to read", group_base, group_size);
+
         for (__u32 k = 0; k < MAX_NOF_SIGNALS; k++) {
-                if (k >= nof_signals)
+                if (k >= group_size)
                         break;
-                __u32 key = k + key_offset;
+                __u32 key = k + group_base;
                 // get the signal address
                 __u64 *address = bpf_map_lookup_elem(&address_map, &key);
                 if (!address) {
@@ -449,39 +454,22 @@ static inline int read_signals(__u32 nof_signals, __u64 cookie, __u32 key_offset
                         DEBUG_P("\tERR, failed to read signal");
                         return -1;
                 }
-                if (INTERACTIVE == 0 || IS_OUTPUT == 0) {
-                        copy_user_space_value_to_map(actual_time, key, signal);
-                }
-                stash[k] = signal;
+                // copy the current value in the correct trajectory sequence
+                copy_user_space_value_to_map(actual_time, key, signal);
+                // prepare a copy of the value read to flush at the end of the cycle
+                if (key < 16) // explicit out of bound check
+                        stash[key] = signal;
         }
 
-        struct model_record *r;
-        if (INTERACTIVE == 1 && IS_OUTPUT == 1) {
-                // reserve memory in the ring buffer
-                r = bpf_ringbuf_reserve(
-                    &out_rb, sizeof(struct model_record) + nof_signals * sizeof(__u64), 0);
-                if (r == NULL) {
-                        DEBUG_P("\tERR, failed to reserve rb memory");
-                        return -1;
-                }
-                r->time   = actual_time;
-                r->filler = 0;
-                // it is implemented this way since it avoids automatic
-                // rewriting and consequent program rejection by the
-                // verifier
-                for (__u32 k = 0; k < MAX_NOF_SIGNALS; k++) {
-                        if (k < nof_signals)
-                                r->values[k] = stash[k];
-                }
-                // commit to the rb
-                bpf_ringbuf_submit(r, BPF_RB_NO_WAKEUP);
-                DEBUG_P("\t\t-> output record committed to the ring buffer");
+        // flush records for persistence
+        if ((group_base + group_size) == NOF_SIGNALS_READ) {
+                flush();
         }
         return 0;
 }
 
-SEC("uretprobe/read_i")
-int uprobe_read_i(struct pt_regs *ctx) {
+SEC("uretprobe/read")
+int uprobe_read(struct pt_regs *ctx) {
 
         if (!IS_MAJOR) { // skip the rest of the program if not major step
                 return 0;
@@ -489,21 +477,8 @@ int uprobe_read_i(struct pt_regs *ctx) {
                 __u32 actual_time = time - 1;
                 DEBUG_P("READ_INPUT, time: %d", actual_time);
                 __u64 cookie = bpf_get_attach_cookie(ctx);
-                bpf_printk("Cookie: %d", cookie);
-                return read_signals(NOF_RISIGNALS, NOF_WISIGNALS, 0);
-        }
-}
-
-SEC("uretprobe/read_o")
-int uprobe_read_o() {
-
-        if (!IS_MAJOR) { // skip the rest of the program if not major step
-                return 0;
-        } else {
-                __u32 actual_time = time - 1;
-                DEBUG_P("READ_OUTPUT, time: %d", actual_time);
-                log_counter += 1;
-                return read_signals(NOF_ROSIGNALS, NOF_WISIGNALS + NOF_RISIGNALS, 1);
+                DEBUG_P("Cookie: %d", cookie);
+                return read_signals(cookie);
         }
 }
 
@@ -511,24 +486,25 @@ struct w_loop_ctx {
         __u32 actual_time;
 };
 
-static long write_signals(u64 index, void *_ctx) {
+static long write_signal(u64 index, void *_ctx) {
 
         struct w_loop_ctx *ctx = _ctx;
         __u32 skey             = (__u32)index;
 
-        // get the signal trace
-        void *sign_trace = bpf_map_lookup_elem(&tracee_map, &skey);
-        if (!sign_trace) {
-                DEBUG_P("\tERR retrieving sign_trace map");
+        // get the sequence
+        bpf_printk("skey: %d", skey);
+        void *sequence = bpf_map_lookup_elem(&trajectory_map, &skey);
+        if (!sequence) {
+                DEBUG_P("\tERR retrieving the signal sequence");
                 return 1;
         }
-        // get the perturbation value
-        __u64 *pert = bpf_map_lookup_elem(sign_trace, &(ctx->actual_time));
-        if (!pert) {
-                DEBUG_P("\tERR reading sign_key %d pert", skey);
+        // get the desired value for the signal
+        __u64 *value = bpf_map_lookup_elem(sequence, &(ctx->actual_time));
+        if (!value) {
+                DEBUG_P("\tERR reading the desired value for signal %d", skey);
                 return 1;
         } else {
-                DEBUG_P("\tsign_key %d pert: %llu", skey, *pert);
+                DEBUG_P("\ttime key %d pert: %llu", skey, *value);
         }
 
         // get the signal address
@@ -541,14 +517,14 @@ static long write_signals(u64 index, void *_ctx) {
         // read the signal from user space
         __u64 sign = 0;
         if (bpf_probe_read_user(&sign, sizeof(sign), (void *)(*address)) == 0) {
-                DEBUG_P("\tsign_key %d from user space: %llu", skey, sign);
+                DEBUG_P("\ttime key %d from user space: %llu", skey, sign);
         } else {
-                DEBUG_P("\tERR, failed to read sign_key %d from user space", skey);
+                DEBUG_P("\tERR, failed to read time key %d from user space", skey);
                 return 1;
         }
 
         // add perturbation to signal
-        sign = ieee754_add(sign, *pert);
+        sign = ieee754_add(sign, *value);
 
         // overwrite signal in user space
         long err = bpf_probe_write_user((void *)(*address), &sign, 8);
@@ -562,13 +538,13 @@ static long write_signals(u64 index, void *_ctx) {
         return 0;
 }
 
-SEC("uretprobe/write_i")
-int uprobe_write_i() {
+SEC("uretprobe/write")
+int uprobe_write(struct pt_regs *ctx) {
 
         if (!IS_MAJOR) { // skip the rest of the program if not major step
                 return 0;
         } else {
-                if (NOF_WISIGNALS > 8) { // hardcoded
+                if (NOF_SIGNALS_WRITTEN > 8) { // hardcoded
                         DEBUG_P("\tERR, too many signals to write");
                         return -1;
                 }
@@ -576,24 +552,20 @@ int uprobe_write_i() {
                 __u32 actual_time = time - 1;
 
                 // check runtime state injection available (STATE DRAIN)
+                // todo: apply multiple state value at the same time
                 __u32 placeholder = 0;
-                bpf_user_ringbuf_drain(&state_rb, extract_injected_state_pert, &placeholder, 0);
+                bpf_user_ringbuf_drain(&state_rb, get_injected_stateval_from_usp, &placeholder, 0);
+                // check live injection available (DRAIN)
+                bpf_user_ringbuf_drain(&inj_rb, get_injected_point_from_usp, &placeholder, 0);
 
-                // check runtime injection available (DRAIN)
-                __u32 _nof_pert_signals = NOF_WISIGNALS;
-                bpf_user_ringbuf_drain(&inj_rb, extract_injected_pert, &_nof_pert_signals, 0);
-
-                // write perturbations to user space
-                DEBUG_P("WRITE, time: %d, nof signals to perturbate: %d", actual_time,
-                        NOF_WISIGNALS);
-                // write state perturbation to user space
+                // write live injection to user space
                 // state
-                struct state_record_trimmed *srt = bpf_map_lookup_elem(&state_trace, &actual_time);
-                if (srt == 0) {
+                struct state_record_trimmed *SRT = bpf_map_lookup_elem(&state_trace, &actual_time);
+                if (SRT == 0) {
                         DEBUG_P("-> no state perturbation applicable");
                 } else {
-                        // write state perturbation to user space
-                        long err = bpf_probe_write_user((void *)(srt->addr), &(srt->value), 8);
+                        // write state injection to user space
+                        long err = bpf_probe_write_user((void *)(SRT->addr), &(SRT->value), 8);
                         if (err != 0) {
                                 DEBUG_P("\tERR, failed to write state perturbation to user "
                                         "space, err: %d",
@@ -601,18 +573,24 @@ int uprobe_write_i() {
                         } else {
                                 DEBUG_P("-> used state perturbation, "
                                         "value: %llu (address: %llu)",
-                                        srt->value, srt->addr);
+                                        SRT->value, SRT->addr);
                         }
                 }
                 // signals
-                struct w_loop_ctx ctx = {
+                struct w_loop_ctx wl_ctx = {
                     .actual_time = actual_time,
                 };
+
+                // extract signals within the current group
+                __u64 cookie     = bpf_get_attach_cookie(ctx);
+                __u32 group_base = (__u32)cookie >> 4;
+                __u32 group_size = (__u32)cookie & 0b1111;
+                DEBUG_P("\tgroup %d, there are %d signals to write", group_base, group_size);
 #pragma unroll
                 for (int i = 0; i < 8; ++i) { // hardcoded
-                        if (i >= NOF_WISIGNALS)
+                        if (i >= group_size)
                                 break;
-                        write_signals(i, &ctx);
+                        write_signal(i + group_base, &wl_ctx);
                 }
         }
         return 0;

@@ -1,64 +1,68 @@
 {
-    "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/ToyModel/Simulink2Code_ert_rtw/Simulink2Code",
-    "TIMER_SYMBOL": "_Z10rt_OneStepv",
-    "MINOR_TO_MAJOR_RATIO": "1",
-    "NOF_CYCLES": "20",
-    "WRITE_TIMING_I": {
-        "SYMBOL": "_Z10rt_OneStepv",
-	"OFFSET":  "80",
-        "SIGNALS": [
-	    {
-		"SIGN_NAME": "X",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaac0020"
-	    },	    
-	    {
-		"SIGN_NAME": "Y",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaac0028"
-	    }	
-	]
-    }, 
-    "READ_TIMING_I": {
-	"SYMBOL": "_Z10rt_OneStepv",
-	"OFFSET":  "80",
-	"SIGNALS": [
-	    {
-		"SIGN_NAME": "X",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaac0020"
-	    },	    
-	    {
-		"SIGN_NAME": "Y",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaac0028"
-	    }
-	]
-    },
-    "READ_TIMING_O": {
-	"SYMBOL": "_Z10rt_OneStepv",
-	"OFFSET":  "92",
-	"SIGNALS": [
-	    {
-		"SIGN_NAME": "X",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaac0020"
-	    },	    
-	    {
-		"SIGN_NAME": "Y",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaac0028"
-	    },	    
-	    {
-		"SIGN_NAME": "RES",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaac0030"
-	    },	    
-	    {
-		"SIGN_NAME": "MOFFSET",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaac0018"
-	    }
-	]
+  "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/ToyModel/Simulink2Code_ert_rtw/Simulink2Code",
+  "TIMER_SYMBOL": "_Z10rt_OneStepv",
+  "MINOR_TO_MAJOR_RATIO": "1",
+  "NOF_CYCLES": "20",
+  "WRITES": [
+    {
+      "SYMBOL": "_Z10rt_OneStepv",
+      "OFFSET": "80",
+      "SIGNALS": [
+        {
+          "NAME": "X",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaac0020"
+        },
+        {
+          "NAME": "Y",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaac0028"
+        }
+      ]
     }
+  ],
+  "READS": [
+    {
+      "SYMBOL": "_Z10rt_OneStepv",
+      "OFFSET": "80",
+      "SIGNALS": [
+        {
+          "NAME": "Xr0",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaac0020"
+        },
+        {
+          "NAME": "Yr0",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaac0028"
+        }
+      ]
+    },
+    {
+      "SYMBOL": "_Z10rt_OneStepv",
+      "OFFSET": "92",
+      "SIGNALS": [
+        {
+          "NAME": "Xr1",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaac0020"
+        },
+        {
+          "NAME": "Yr1",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaac0028"
+        },
+        {
+          "NAME": "RESr1",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaac0030"
+        },
+        {
+          "NAME": "MOFFSETr1",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaac0018"
+        }
+      ]
+    }
+  ]
 }

@@ -79,7 +79,7 @@ def main() -> None:
     unpacked_res = msgpack.unpackb(result)
     print("(...first 15 output trace records)")
     for sign in unpacked_res["OUT_SIGNALS"]:
-        print(sign["SIGN_NAME"])
+        print(sign["NAME"])
         print(*(sign["VALUES"][:15]), "...")
 
 

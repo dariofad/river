@@ -1,49 +1,52 @@
 {
-    "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/AbstractFuelControl_M1_grt_rtw/fuel_control",
-    "TIMER_SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
-    "MINOR_TO_MAJOR_RATIO": "3",
-    "NOF_CYCLES": "1001",
-    "WRITE_TIMING_I": {
-	"SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
-	"OFFSET":  "0",
-	"SIGNALS": [
-	    {
-		"SIGN_NAME": "PANGLE",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0698"
-	    },
-	    {
-		"SIGN_NAME": "RPM",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad06a0"
-	    }	    
-	]
-    }, 
-    "READ_TIMING_I": null,
-    "READ_TIMING_O": {
-	"SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
-	"OFFSET":  "4428",
-	"SIGNALS": [
-	    {
-		"SIGN_NAME": "PANGLE",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0698"
-	    },
-	    {
-		"SIGN_NAME": "AF",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad06b0"
-	    },
-	    {
-		"SIGN_NAME": "CMODE",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad06b8"
-	    },
-	    {
-		"SIGN_NAME": "BANGLE",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0278"
-	    }	    	    
-	]
+  "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/AbstractFuelControl_M1_grt_rtw/fuel_control",
+  "TIMER_SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
+  "MINOR_TO_MAJOR_RATIO": "3",
+  "NOF_CYCLES": "1001",
+  "WRITES": [
+    {
+      "SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
+      "OFFSET": "0",
+      "SIGNALS": [
+        {
+          "NAME": "PANGLE",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaad0698"
+        },
+        {
+          "NAME": "RPM",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaad06a0"
+        }
+      ]
     }
+  ],
+  "READS": [
+    {
+      "SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
+      "OFFSET": "4428",
+      "SIGNALS": [
+        {
+          "NAME": "PANGLE",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaad0698"
+        },
+        {
+          "NAME": "AF",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaad06b0"
+        },
+        {
+          "NAME": "CMODE",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaad06b8"
+        },
+        {
+          "NAME": "BANGLE",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaad0278"
+        }
+      ]
+    }
+  ]
 }

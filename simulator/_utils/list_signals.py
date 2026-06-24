@@ -6,37 +6,34 @@ from collections import OrderedDict
 
 config = json.load(sys.stdin)
 TABLE = OrderedDict()
-NOF_WI, NOF_RI, NOF_RO = 0, 0, 0
-WRITE_TIMING_I = config["WRITE_TIMING_I"]
-READ_TIMING_I = config["READ_TIMING_I"]
-READ_TIMING_O = config["READ_TIMING_O"]
+NOF_SIGNALS_READ, NOF_SIGNALS_WRITTEN = 0, 0
+READS = config["READS"]
+WRITES = config["WRITES"]
 
 
-def summarize_signals(signals, offset: int = 0) -> None:
-    for pos, sign in enumerate(signals):
-        sign_name = sign["SIGN_NAME"]
-        if TABLE.get(sign_name, -1) == -1:
-            TABLE[sign_name] = [pos + offset]
-        else:
-            TABLE[sign_name].append(pos + offset)
+def summarize_signals(groups: dict[str, str]) -> None:
+    for group in groups:
+        offset = len(TABLE.keys())
+        for pos, sign in enumerate(group["SIGNALS"]):  # type: ignore
+            TABLE[offset + pos] = sign["NAME"]  # type: ignore
 
 
-if WRITE_TIMING_I:
-    summarize_signals(WRITE_TIMING_I["SIGNALS"])
-    NOF_WI = len(WRITE_TIMING_I["SIGNALS"])
-if READ_TIMING_I:
-    summarize_signals(READ_TIMING_I["SIGNALS"], NOF_WI)
-    NOF_RI = len(READ_TIMING_I["SIGNALS"])
-if READ_TIMING_O:
-    summarize_signals(READ_TIMING_O["SIGNALS"], NOF_WI + NOF_RI)
-    NOF_RO = len(READ_TIMING_O["SIGNALS"])
+if READS:
+    summarize_signals(READS)
+    NOF_SIGNALS_READ = len(TABLE.keys())
+if WRITES:
+    summarize_signals(WRITES)
+    NOF_SIGNALS_WRITTEN = len(TABLE.keys()) - NOF_SIGNALS_READ
 
-print("SIGNAL RECAP:")
 if not TABLE.keys():
     exit()
-max_sign_name_len = max([len(n) for n in TABLE.keys()]) + 1
-for sign_name in TABLE.keys():
-    snames = str(TABLE[sign_name])
-    rjust_rx = snames.rjust(12)
-    ljust_sx = (sign_name + ":").ljust(max_sign_name_len)
+max_sign_name_len = max([len(n) for n in TABLE.values()]) + 1
+if NOF_SIGNALS_READ > 0:
+    print("READS")
+for pos, skey in enumerate(TABLE.keys()):
+    if pos == NOF_SIGNALS_READ:
+        print("WRITES")
+    name = TABLE[skey]
+    rjust_rx = name.rjust(12)
+    ljust_sx = (str(skey) + ":").ljust(max_sign_name_len)
     print(f"\t{ljust_sx}{rjust_rx}")

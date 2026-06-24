@@ -30,7 +30,7 @@ func ModelRecordToCSVString(record ModelRecord) string {
 }
 
 type Trace struct {
-	SignName string    `msgpack:"SIGN_NAME"`
+	SignName string    `msgpack:"NAME"`
 	Values   []float64 `msgpack:"VALUES"`
 }
 

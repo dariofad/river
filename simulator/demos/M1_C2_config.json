@@ -1,39 +1,42 @@
 {
-    "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/DualACC/dualACC",
-    "TIMER_SYMBOL": "_ZN6egoCar4stepEv",
-    "MINOR_TO_MAJOR_RATIO": "3",
-    "NOF_CYCLES": "800",
-    "WRITE_TIMING_I": {
-	"SYMBOL": "_ZN6egoCar4stepEv",
-	"OFFSET":  "308",
-	"SIGNALS": [
-	    {
-		"SIGN_NAME": "DREL",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0328"
-	    }
-	]
-    }, 
-    "READ_TIMING_I": null,
-    "READ_TIMING_O": {
-	"SYMBOL": "_ZN6egoCar4stepEv",
-	"OFFSET":  "3936",
-	"SIGNALS": [
-	    {
-		"SIGN_NAME": "DREL",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0328"
-	    },
-	    {
-		"SIGN_NAME": "AEGO",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0340"
-	    },
-	    {
-		"SIGN_NAME": "VEGO",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0338"
-	    }
-	]
+  "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/DualACC/dualACC",
+  "TIMER_SYMBOL": "_ZN6egoCar4stepEv",
+  "MINOR_TO_MAJOR_RATIO": "3",
+  "NOF_CYCLES": "800",
+  "WRITES": [
+    {
+      "SYMBOL": "_ZN6egoCar4stepEv",
+      "OFFSET": "308",
+      "SIGNALS": [
+        {
+          "NAME": "DREL",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaad0328"
+        }
+      ]
     }
+  ],
+  "READS": [
+    {
+      "SYMBOL": "_ZN6egoCar4stepEv",
+      "OFFSET": "3936",
+      "SIGNALS": [
+        {
+          "NAME": "DRELr",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaad0328"
+        },
+        {
+          "NAME": "AEGO",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaad0340"
+        },
+        {
+          "NAME": "VEGO",
+          "TYPE": "float64",
+          "ADDR": "aaaaaaad0338"
+        }
+      ]
+    }
+  ]
 }

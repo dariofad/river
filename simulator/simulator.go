@@ -28,7 +28,6 @@ var VERBOSE bool
 var BENCH bool
 var RATIO uint32
 var CYCLES uint32
-var INTERACTIVE uint16
 
 type eBPFInjector struct {
 	probeObjs *probeObjects
@@ -52,10 +51,10 @@ func paddedEntries(entries uint32) uint32 {
 	return uint32(((entries + 4096 - 1) / 4096) * 4096)
 }
 
-func setCycles(spec *ebpf.CollectionSpec, simData my_types.SimFormat) error {
+func setCycles(spec *ebpf.CollectionSpec, config my_types.Configuration) error {
 
 	// set ratio
-	ratio, err := strconv.ParseUint(simData.MinorToMajorRatio, 10, 64) // base 10
+	ratio, err := strconv.ParseUint(config.MinorToMajorRatio, 10, 64) // base 10
 	if err != nil {
 		log.Printf("Error converting MinorToMinorRatio: %s", err)
 		return err
@@ -65,10 +64,10 @@ func setCycles(spec *ebpf.CollectionSpec, simData my_types.SimFormat) error {
 		log.Printf("Error setting MinorToMajorRation in spec: %s", err)
 		return err
 	}
-	log.Printf("Minor_to_major_ratio :%d", RATIO)
+	log.Printf("Minor_to_major_ratio: %d", RATIO)
 
 	// set cycles
-	cycles, err := strconv.ParseUint(simData.NofCycles, 10, 64) // base 10
+	cycles, err := strconv.ParseUint(config.NofCycles, 10, 64) // base 10
 	if err != nil {
 		log.Printf("Error converting Cycles: %s", err)
 		return err
@@ -84,25 +83,28 @@ func setCycles(spec *ebpf.CollectionSpec, simData my_types.SimFormat) error {
 }
 
 // Converts raw simulation data to a proper trajectory
-func extractTrajectory(rawTrajectory map[string]interface{}, simData my_types.SimFormat) (map[string][]float64, error) {
+func extractTrajectory(rawTrajectory map[string]interface{}, config my_types.Configuration) (map[string][]float64, error) {
 
 	trajectory := make(map[string][]float64)
-	for _, signal := range simData.WTimingI.Signals {
-		vals := make([]float64, CYCLES)
-		if rawTrajectory, ok := rawTrajectory[signal.SignName].([]interface{}); ok {
-			for t, rawVal := range rawTrajectory {
-				val, ok := rawVal.(float64)
-				if !ok {
-					log.Printf("Cannot convert to float trajectory value %v", rawVal)
-					return nil, errors.New("Cannot convert trajectory value to float64")
+	// todo: multiple writes on the same signal can lead to a wrong trajectory
+	for _, group := range config.Writes {
+		for _, signal := range group.Signals {
+			vals := make([]float64, CYCLES)
+			if rawTrajectory, ok := rawTrajectory[signal.Name].([]interface{}); ok {
+				for t, rawVal := range rawTrajectory {
+					val, ok := rawVal.(float64)
+					if !ok {
+						log.Printf("Cannot convert to float trajectory value %v", rawVal)
+						return nil, errors.New("Cannot convert trajectory value to float64")
+					}
+					vals[t] = val
 				}
-				vals[t] = val
+			} else {
+				log.Printf("Cannot extract raw trajectory for signal %s", signal.Name)
+				return nil, errors.New("Trajectory extraction error")
 			}
-		} else {
-			log.Printf("Cannot extract raw trajectory for signal %s", signal.SignName)
-			return nil, errors.New("Trajectory extraction error")
+			trajectory[signal.Name] = vals
 		}
-		trajectory[signal.SignName] = vals
 	}
 	return trajectory, nil
 }
@@ -134,51 +136,40 @@ func Start(
 		wg.Done()
 		return
 	}
-	var simData my_types.SimFormat
-	err = json.Unmarshal(rawSimData, &simData)
+	var config my_types.Configuration
+	err = json.Unmarshal(rawSimData, &config)
 
 	// Set cycles in ebpf
-	err = setCycles(spec, simData)
+	err = setCycles(spec, config)
 	if err != nil {
 		errCh <- err
 		wg.Done()
 		return
 	}
 
-	// Fix max entries in eBPF spec, retrieve signals and categories
-	var sCategories []my_types.SignTiming
-	sCategories = append(sCategories, simData.WTimingI)
-	sCategories = append(sCategories, simData.RTimingI)
-	sCategories = append(sCategories, simData.RTimingO)
-	var sTypes []uint32
-	for t := 0; t < len(simData.WTimingI.Signals); t++ {
-		sTypes = append(sTypes, 0)
+	// Set max entries in eBPF spec, retrieve signals, write desired trajectories
+	var cReads []my_types.Signal
+	var cWrites []my_types.Signal
+	var nof_signals_read uint32
+	var nof_signals_written uint32
+	for _, group := range config.Reads {
+		cReads = append(cReads, group.Signals...)
+		nof_signals_read += uint32(len(group.Signals))
 	}
-	var _nof_wi, _nof_ri, _nof_ro uint32
-	_nof_wi = uint32(len(simData.WTimingI.Signals))
-	_nof_ri = uint32(len(simData.RTimingI.Signals))
-	_nof_ro = uint32(len(simData.RTimingO.Signals))
-	log.Printf("nof_wi %d, nof_ri %d, nof_ro %d", _nof_wi, _nof_ri, _nof_ro)
-	if err = spec.Variables["NOF_WISIGNALS"].Set(uint32(len(simData.WTimingI.Signals))); err != nil {
-		log.Printf("Error setting variable setting variable NOF_WISIGNALS: %v", err)
+	for _, group := range config.Writes {
+		cWrites = append(cWrites, group.Signals...)
+		nof_signals_written += uint32(len(group.Signals))
+	}
+
+	log.Printf("nof_signals_read %d, nof_signals_written %d", nof_signals_read, nof_signals_written)
+	if err = spec.Variables["NOF_SIGNALS_READ"].Set(nof_signals_read); err != nil {
+		log.Printf("Error setting variable setting variable NOF_SIGNALS_READ: %v", err)
 		errCh <- err
 		wg.Done()
 		return
 	}
-	for t := 0; t < len(simData.RTimingI.Signals); t++ {
-		sTypes = append(sTypes, 1)
-	}
-	if err = spec.Variables["NOF_RISIGNALS"].Set(uint32(len(simData.RTimingI.Signals))); err != nil {
-		log.Printf("Error setting variable setting variable NOF_RISIGNALS: %v", err)
-		errCh <- err
-		wg.Done()
-		return
-	}
-	for t := 0; t < len(simData.RTimingO.Signals); t++ {
-		sTypes = append(sTypes, 2)
-	}
-	if err = spec.Variables["NOF_ROSIGNALS"].Set(uint32(len(simData.RTimingO.Signals))); err != nil {
-		log.Printf("Error setting variable setting variable NOF_ROSIGNALS: %v", err)
+	if err = spec.Variables["NOF_SIGNALS_WRITTEN"].Set(nof_signals_written); err != nil {
+		log.Printf("Error setting variable setting variable NOF_SIGNALS_WRITTEN: %v", err)
 		errCh <- err
 		wg.Done()
 		return
@@ -205,7 +196,7 @@ func Start(
 	defer probeObjs.Close()
 
 	// Extract trajectory
-	trajectory, err := extractTrajectory(rawTrajectory, simData)
+	trajectory, err := extractTrajectory(rawTrajectory, config)
 	if err != nil {
 		errCh <- err
 		wg.Done()
@@ -213,36 +204,36 @@ func Start(
 	}
 	log.Print("Input trajectory extracted successfully")
 
-	// get trace map specs
-	traceeMapSpec := spec.Maps["tracee_map"]
-	traceeMapSpec.MaxEntries = paddedEntries(uint32(len(sTypes)))
+	// get trajectory map
+	trajectoryMapSpec := spec.Maps["trajectory_map"]
+	trajectoryMapSpec.MaxEntries = paddedEntries(nof_signals_read + nof_signals_written)
 	// create outer map
-	traceeMap := probeObjs.TraceeMap
+	trajectoryMap := probeObjs.TrajectoryMap
 	if err != nil {
-		log.Printf("Cannot create mSignals (outer) map: %s", err)
+		log.Printf("Cannot create trajectory map (outer) map: %s", err)
 		errCh <- err
 		wg.Done()
 		return
 	}
-	// create signal traces
+	// create signal sequences
 	// start preparing a template for the array positions
 	innerMapKeys := make([]uint32, CYCLES)
 	for p, _ := range innerMapKeys {
 		innerMapKeys[p] = uint32(p)
 	}
-	for s := 0; s < len(sTypes); s++ {
+	for s := 0; s < int(nof_signals_read+nof_signals_written); s++ {
 		// refine and clone the inner map spec to avoid reuse
-		innerSpec := traceeMapSpec.InnerMap.Copy()
+		innerSpec := trajectoryMapSpec.InnerMap.Copy()
 		innerSpec.MaxEntries = paddedEntries(CYCLES)
 		inner, err := ebpf.NewMap(innerSpec)
 		if err != nil {
-			log.Printf("Cannot create mSignal (inner) map: %s", err)
+			log.Printf("Cannot create sequence (inner) map: %s", err)
 			errCh <- err
 			wg.Done()
 			return
 		}
 		// pin the inner map
-		pinPath := "/sys/fs/bpf/inner_values_" + strconv.FormatInt(int64(s), 10)
+		pinPath := "/sys/fs/bpf/sequence_values_" + strconv.FormatInt(int64(s), 10)
 		if err := inner.Pin(pinPath); err != nil {
 			log.Printf("Cannot pin inner map at %v", pinPath)
 			errCh <- err
@@ -250,8 +241,10 @@ func Start(
 			return
 		}
 		// inject the trajectory
-		if s < int(_nof_wi) { // only for signals to write
-			sName := simData.WTimingI.Signals[s].SignName
+		if s >= int(nof_signals_read) { // only for signals to write
+			sw := int(s - int(nof_signals_read))
+			sName := cWrites[sw].Name
+			log.Printf("sName: %v", sName)
 			// set the trajectory with a batch update
 			_, err = inner.BatchUpdate(innerMapKeys, trajectory[sName], &ebpf.BatchOptions{
 				Flags: uint64(ebpf.UpdateAny),
@@ -264,11 +257,11 @@ func Start(
 			}
 			log.Printf("Input trajectory %d successfully injected", s)
 		}
-		// insert single trace map into tracees
+		// insert single sequence array into trajectory map
 		key := uint32(s)
 		fd := inner.FD()
 		value := uint32(fd)
-		if err := traceeMap.Update(key, value, 0); err != nil {
+		if err := trajectoryMap.Update(key, value, 0); err != nil {
 			if errno, ok := err.(syscall.Errno); ok {
 				log.Printf("KERNEL ERROR: errno=%d", errno)
 			} else {
@@ -279,8 +272,7 @@ func Start(
 			wg.Done()
 			return
 		}
-		// defer inner map pinning
-		// Now, unpin the map
+		// defer inner map unpinning
 		defer func() {
 			if err := inner.Unpin(); err != nil {
 				log.Printf("Cannot unpin inner map, err: %v", err)
@@ -288,52 +280,32 @@ func Start(
 			log.Printf("Map unpinned from %s", pinPath)
 		}()
 		defer inner.Close()
-
-		// setup signal addresses and types
-		mAddressSpec := spec.Maps["address_map"]
-		mAddressSpec.MaxEntries = paddedEntries(uint32(len(sTypes)))
-		mTypesSpec := spec.Maps["type_map"]
-		mTypesSpec.MaxEntries = paddedEntries(uint32(len(sTypes)))
-		var skey uint32 = 0
-		for _, sCategory := range sCategories {
-			for _, signal := range sCategory.Signals {
-				// address
-				signalAddr, err := strconv.ParseUint(signal.SignAddr, 16, 64)
-				if err != nil {
-					log.Printf("Error converting signal address: %s", err)
-					errCh <- err
-					wg.Done()
-					return
-				}
-				err = probeObjs.AddressMap.Update(skey, signalAddr, 0)
-				if err != nil {
-					log.Printf("Cannot perform the update to addressMap: %v", err)
-					errCh <- err
-					wg.Done()
-					return
-				}
-				// type
-				err = probeObjs.TypeMap.Update(skey, sTypes[skey], 0)
-				skey += 1
-			}
+	}
+	// setup signal addresses and types
+	mAddressSpec := spec.Maps["address_map"]
+	mAddressSpec.MaxEntries = paddedEntries(nof_signals_read + nof_signals_written)
+	var allSignals []my_types.Signal
+	allSignals = append(allSignals, cReads...)
+	allSignals = append(allSignals, cWrites...)
+	for p, signal := range allSignals {
+		// address
+		signalAddr, err := strconv.ParseUint(signal.Addr, 16, 64)
+		if err != nil {
+			log.Printf("Error converting signal address: %s", err)
+			errCh <- err
+			wg.Done()
+			return
+		}
+		err = probeObjs.AddressMap.Update(uint32(p), signalAddr, 0)
+		if err != nil {
+			log.Printf("Cannot perform the update to addressMap: %v", err)
+			errCh <- err
+			wg.Done()
+			return
 		}
 	}
 
-	// Determine interactivity
-	if simulationMode == my_types.Falsification {
-		INTERACTIVE = 0
-	} else {
-		INTERACTIVE = 1
-	}
-	if probeObjs.InteractiveMap.Update(uint32(0), uint16(INTERACTIVE), 0); err != nil {
-		log.Printf("Error setting interactivity: %s", err)
-		errCh <- err
-		wg.Done()
-		return
-	}
-
-	// Open model executable
-	modelExecutable, err := link.OpenExecutable(simData.ModelPath)
+	modelExecutable, err := link.OpenExecutable(config.ModelPath)
 	if err != nil {
 		log.Printf("Error opening model executable: %s", err)
 		errCh <- err
@@ -343,87 +315,76 @@ func Start(
 
 	// Link all uprobes
 	var offset uint64
-	// 1) writes on input signals
-	if _nof_wi > 0 {
-		offset, err = strconv.ParseUint(simData.WTimingI.Offset, 10, 64) // base 10
-		if err != nil {
-			log.Printf("Error converting uprobe offset: %s", err)
-			errCh <- err
-			wg.Done()
-			return
+	var group_base int
+	// 1) reads
+	if nof_signals_read > 0 {
+		for _, group := range config.Reads {
+			cookie := uint32(group_base<<4 + len(group.Signals))
+			log.Printf("Read group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
+			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
+			if err != nil {
+				log.Printf("Error converting uprobe offset: %s", err)
+				errCh <- err
+				wg.Done()
+				return
+			}
+			uprobe_r, err := modelExecutable.Uprobe(
+				group.Symbol,
+				probeObjs.UprobeRead,
+				&link.UprobeOptions{Offset: offset, Cookie: uint64(cookie)},
+			)
+			if err != nil {
+				log.Printf("Error setting the uprobe_read: %v", err)
+				errCh <- err
+				wg.Done()
+				return
+			} else {
+				log.Print("Uprobe_read linked")
+			}
+			defer uprobe_r.Close()
+			// update next group_base start position
+			group_base += len(group.Signals)
 		}
-		uprobe_wi, err := modelExecutable.Uprobe(
-			simData.WTimingI.SymbolName,
-			probeObjs.UprobeWriteI,
-			&link.UprobeOptions{Offset: offset},
-		)
-		if err != nil {
-			log.Printf("Error setting the uprobe_wi: %v", err)
-			errCh <- err
-			wg.Done()
-			return
-		} else {
-			log.Print("Uprobe_wi linked")
-		}
-		defer uprobe_wi.Close()
 	}
-	// 2) reads on input signals
-	if _nof_ri > 0 {
-		offset, err = strconv.ParseUint(simData.RTimingI.Offset, 10, 64) // base 10
-		if err != nil {
-			log.Printf("Error converting uprobe offset: %s", err)
-			errCh <- err
-			wg.Done()
-			return
+	// 2) writes
+	if nof_signals_written > 0 {
+		for p, group := range config.Writes {
+			p = p + int(nof_signals_read)
+			cookie := uint32(p<<4 + len(group.Signals))
+			log.Printf("Written group %d, %d signals, cookie: %d", p, len(group.Signals), cookie)
+			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
+			if err != nil {
+				log.Printf("Error converting uprobe offset: %s", err)
+				errCh <- err
+				wg.Done()
+				return
+			}
+			uprobe_w, err := modelExecutable.Uprobe(
+				group.Symbol,
+				probeObjs.UprobeWrite,
+				&link.UprobeOptions{Offset: offset, Cookie: uint64(cookie)},
+			)
+			if err != nil {
+				log.Printf("Error setting the uprobe_write: %v", err)
+				errCh <- err
+				wg.Done()
+				return
+			} else {
+				log.Print("Uprobe_write linked")
+			}
+			defer uprobe_w.Close()
 		}
-		uprobe_ri, err := modelExecutable.Uprobe(
-			simData.RTimingI.SymbolName,
-			probeObjs.UprobeReadI,
-			&link.UprobeOptions{Offset: offset, Cookie: 77},
-		)
-		if err != nil {
-			log.Printf("Error setting the uprobe_ri: %v", err)
-			errCh <- err
-			wg.Done()
-			return
-		} else {
-			log.Print("Uprobe_ri linked")
-		}
-		defer uprobe_ri.Close()
 	}
-	// 3) reads on output signals
-	if _nof_ro > 0 {
-		offset, err = strconv.ParseUint(simData.RTimingO.Offset, 10, 64) // base 10
-		if err != nil {
-			log.Printf("Error converting uprobe offset: %s", err)
-			errCh <- err
-			wg.Done()
-			return
-		}
-		uprobe_ro, err := modelExecutable.Uprobe(
-			simData.RTimingO.SymbolName,
-			probeObjs.UprobeReadO,
-			&link.UprobeOptions{Offset: offset},
-		)
-		if err != nil {
-			log.Printf("Error setting the uprobe_ro: %v", err)
-			errCh <- err
-			wg.Done()
-			return
-		} else {
-			log.Print("Uprobe_ro linked")
-		}
-		defer uprobe_ro.Close()
-	}
+
 	// cyclic timer
 	var uprobe_timer link.Link
-	uprobe_timer, err = modelExecutable.Uprobe(simData.TimerSymbol, probeObjs.UprobeTimer, nil)
+	uprobe_timer, err = modelExecutable.Uprobe(config.TimerSymbol, probeObjs.UprobeTimer, nil)
 	defer uprobe_timer.Close()
 
 	// Start preparing the simulation commands
 	ctx, cancelSimulation := context.WithCancel(context.Background())
 	defer cancelSimulation()
-	binCmd := exec.CommandContext(ctx, simData.ModelPath)
+	binCmd := exec.CommandContext(ctx, config.ModelPath)
 	if VERBOSE {
 		binCmd.Stdout = os.Stdout
 	}
@@ -448,7 +409,7 @@ func Start(
 				log.Printf("Simulation finished with error: %s", err)
 				errCh <- err
 				wg.Done()
-				stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+				stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
 				return
 			}
 		} else {
@@ -462,20 +423,20 @@ func Start(
 	switch simulationMode {
 	case my_types.Monitoring:
 		ctx := context.Background()
-		if err := monitorSimulation(ctx, probeObjs, _nof_ro); err != nil {
+		if err := monitorSimulation(ctx, probeObjs, nof_signals_read); err != nil {
 			errCh <- err
 			wg.Done()
-			stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
 			return
 		}
 	case my_types.Falsification:
 		var outSignals my_types.OutputTrace
-		for id, signal := range simData.RTimingO.Signals {
+		for id, signal := range cReads {
 			var signTrace my_types.Trace
-			signTrace.SignName = signal.SignName
-			var signalKey uint32 = uint32(id) + _nof_wi + _nof_ri
+			signTrace.SignName = signal.Name
+			var signalKey uint32 = uint32(id)
 			// get the trace from the eBPF map
-			pinPath := "/sys/fs/bpf/inner_values_" + strconv.FormatInt(int64(signalKey), 10)
+			pinPath := "/sys/fs/bpf/sequence_values_" + strconv.FormatInt(int64(signalKey), 10)
 			innerTrace, err := ebpf.LoadPinnedMap(pinPath, nil)
 			if err != nil {
 				log.Printf("Cannot recover inner pinned map at %s: %v", pinPath, err)
@@ -492,7 +453,7 @@ func Start(
 					log.Printf("Trace lookup failed: %s\n", err)
 					errCh <- err
 					wg.Done()
-					stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+					stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
 					return
 				}
 			}
@@ -516,7 +477,7 @@ func Start(
 			log.Printf("Cannot pin state perturbation buffer at %v", pertRBPath)
 			errCh <- err
 			wg.Done()
-			stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
 			return
 		}
 		// defer unpinnning
@@ -574,7 +535,7 @@ func Start(
 		}(ctx, statePertCh, probeObjs, errChi)
 
 		// monitor simulation
-		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, _nof_ro)
+		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read)
 
 		// wait for simulation to terminate
 		wgm.Wait()
@@ -585,7 +546,7 @@ func Start(
 		default:
 			wg.Done()
 		}
-		stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+		stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
 		return
 
 	case my_types.SignalPerturbation:
@@ -603,7 +564,7 @@ func Start(
 			log.Printf("Cannot pin perturbation buffer at %v", pertRBPath)
 			errCh <- err
 			wg.Done()
-			stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
 			return
 		}
 		// defer unpinnning
@@ -614,7 +575,7 @@ func Start(
 		}()
 
 		// apply signal perturbation
-		go func(ctx context.Context, pertCh <-chan map[string]interface{}, probeObjs probeObjects, errCh chan error, _nof_wi uint32) {
+		go func(ctx context.Context, pertCh <-chan map[string]interface{}, probeObjs probeObjects, errCh chan error, nof_signals_written uint32) {
 
 			for {
 				select {
@@ -625,7 +586,7 @@ func Start(
 						break // the simulation is still running but the channel was closed
 					}
 					// extract perturbation records
-					pertRecords, err := extractPerturbationRecords(perturbation, simData)
+					pertRecords, err := extractPerturbationRecords(perturbation, nof_signals_written, cWrites)
 					if err != nil {
 						log.Printf("Error converting perturbation into model input records: %v", err)
 					}
@@ -653,7 +614,7 @@ func Start(
 					injCmd := exec.Command(
 						"sudo",
 						"./simulator/injector",
-						strconv.FormatInt(int64(_nof_wi), 10),
+						strconv.FormatInt(int64(nof_signals_written), 10),
 						tempFile.Name(),
 						enableInjectorVerbosity,
 					)
@@ -666,9 +627,9 @@ func Start(
 				}
 
 			}
-		}(ctx, pertCh, probeObjs, errChi, _nof_wi)
+		}(ctx, pertCh, probeObjs, errChi, nof_signals_written)
 		// monitor simulation
-		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, _nof_ro)
+		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read)
 
 		// wait for simulation to terminate
 		wgm.Wait()
@@ -680,17 +641,17 @@ func Start(
 			wg.Done()
 		}
 
-		stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+		stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
 		return
 	}
 
 	// terminate
 	wg.Done()
-	stopSimulator(simulationStartTime, _nof_wi, _nof_ri, _nof_ro, simData)
+	stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
 	return
 }
 
-func stopSimulator(simulationStartTime time.Time, _nof_wi, _nof_ri, _nof_ro uint32, simData my_types.SimFormat) {
+func stopSimulator(simulationStartTime time.Time, nof_signals_read, nof_signals_written uint32, config my_types.Configuration) {
 
 	elapsedTime := time.Since(simulationStartTime)
 	statsFName := "_stats.csv"
@@ -699,12 +660,11 @@ func stopSimulator(simulationStartTime time.Time, _nof_wi, _nof_ri, _nof_ro uint
 		log.Fatal(err)
 	}
 	defer file.Close()
-	logLine := simData.ModelPath + "," +
-		simData.NofCycles + "," +
-		simData.MinorToMajorRatio + "," +
-		strconv.FormatUint(uint64(_nof_wi), 10) + "," +
-		strconv.FormatUint(uint64(_nof_ri), 10) + "," +
-		strconv.FormatUint(uint64(_nof_ro), 10) + "," +
+	logLine := config.ModelPath + "," +
+		config.NofCycles + "," +
+		config.MinorToMajorRatio + "," +
+		strconv.FormatUint(uint64(nof_signals_read), 10) + "," +
+		strconv.FormatUint(uint64(nof_signals_written), 10) + "," +
 		strconv.FormatInt(elapsedTime.Nanoseconds(), 10) + "\n"
 
 	if _, err := file.WriteString(logLine); err != nil {
@@ -757,7 +717,7 @@ func customConversion(rawVal interface{}) (uint32, bool) {
 
 }
 
-func extractPerturbationRecords(data map[string]interface{}, simData my_types.SimFormat) ([]my_types.ModelRecord, error) {
+func extractPerturbationRecords(data map[string]interface{}, nof_signals_written uint32, cWrites []my_types.Signal) ([]my_types.ModelRecord, error) {
 
 	// extract time
 	timeVals := make([]uint32, 0)
@@ -802,9 +762,9 @@ func extractPerturbationRecords(data map[string]interface{}, simData my_types.Si
 		var record my_types.ModelRecord
 		record.Time = v
 		record.Filler = 0
-		record.Values = make([]float64, len(simData.WTimingI.Signals))
-		for signal_pos, signal := range simData.WTimingI.Signals {
-			if vals, ok := signalVals[signal.SignName]; ok {
+		record.Values = make([]float64, nof_signals_written)
+		for signal_pos, signal := range cWrites {
+			if vals, ok := signalVals[signal.Name]; ok {
 				record.Values[signal_pos] = vals[p]
 			} else {
 				// append zero
@@ -816,14 +776,14 @@ func extractPerturbationRecords(data map[string]interface{}, simData my_types.Si
 	return pertRecords, nil
 }
 
-func asyncMonitorSimulation(wg *sync.WaitGroup, errCh chan<- error, ctx context.Context, probeObjs probeObjects, _nof_ro uint32) {
+func asyncMonitorSimulation(wg *sync.WaitGroup, errCh chan<- error, ctx context.Context, probeObjs probeObjects, nof_signals_read uint32) {
 
 	defer wg.Done()
-	err := monitorSimulation(ctx, probeObjs, _nof_ro)
+	err := monitorSimulation(ctx, probeObjs, nof_signals_read)
 	errCh <- err
 }
 
-func monitorSimulation(ctx context.Context, probeObjs probeObjects, _nof_ro uint32) error {
+func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_read uint32) error {
 
 	// Create the Redis client
 	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
@@ -852,11 +812,11 @@ func monitorSimulation(ctx context.Context, probeObjs probeObjects, _nof_ro uint
 
 			// check record validity
 			raw := record.RawSample
-			if len(raw) < int((_nof_ro+1)*8) {
+			if len(raw) < int((nof_signals_read+1)*8) {
 				log.Printf("Corrupted record: truncated to %d bytes", len(raw))
 			}
 			// convert to a structured record
-			_vals := make([]float64, _nof_ro)
+			_vals := make([]float64, nof_signals_read)
 			for p, _ := range _vals {
 				_tbuf := bytes.NewReader(raw[8+p*8 : 16+p*8])
 				binary.Read(_tbuf, binary.LittleEndian, &_vals[p])

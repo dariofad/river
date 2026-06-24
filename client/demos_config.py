@@ -22,6 +22,15 @@ def monit_M3_C1_trajectory() -> dict:
     return trajectory
 
 
+def monit_M4_C1_trajectory() -> dict:
+    yw0 = np.array([float(10) for _ in range(10)], dtype=np.float64)
+    zw0 = np.array([float(100) for _ in range(10)], dtype=np.float64)
+    trajectory = dict()
+    trajectory["Yw0"] = yw0.tolist()
+    trajectory["Zw0"] = zw0.tolist()
+    return trajectory
+
+
 def fals_M1_C1_trajectory() -> dict:
     drel = np.array([float(i) / 1000 for i in range(800)], dtype=np.float64)
     trajectory = dict()

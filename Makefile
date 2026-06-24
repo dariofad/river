@@ -47,7 +47,7 @@ aslr_off:
 	echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
 _run: | aslr_off start_redis
-	sudo su -c 'rm -rf /sys/fs/bpf/inner*'
+	sudo su -c 'rm -rf /sys/fs/bpf/sequence_*'
 	sudo su -c 'rm -rf /sys/fs/bpf/pertbuf*'
 	sudo su -c 'rm -rf /sys/fs/bpf/state_pertbuf*'
 	@if docker ps -a --filter "name=$(CONTAINER_NAME)" --format "{{.ID}}" | grep -q .; then \

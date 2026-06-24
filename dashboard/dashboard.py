@@ -14,8 +14,7 @@ REDIS_DB = 0
 ZSET_KEY = "simulation:0"
 
 # Signals config
-RO_NAMES = []
-NOF_RO = 0
+READ_NAMES = []
 
 app = Dash(__name__)
 
@@ -23,22 +22,19 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=
 
 
 def get_config() -> None:
-    global RO_NAMES
-    global NOF_RO
-    RO_NAMES = []
+    global READ_NAMES
     with open("../simulator/config.json") as f:
         config = json.load(f)
-        READ_TIMING_O = config["READ_TIMING_O"]
-        if READ_TIMING_O:
-            for sign in READ_TIMING_O["SIGNALS"]:
-                sign_name = sign["SIGN_NAME"]
-                RO_NAMES.append(sign_name)
-            NOF_RO = len(READ_TIMING_O["SIGNALS"])
+        reads = config["READS"]
+        for group in reads:
+            signals = group["SIGNALS"]
+            for s in signals:
+                READ_NAMES.append(s["NAME"])
 
 
 def get_df() -> DataFrame:
-    global RO_NAMES
-    global NOF_RO
+    global READ_NAMES
+    READ_NAMES = []
     # get the current configuration
     get_config()
     # get the data from the cache
@@ -65,7 +61,7 @@ def get_df() -> DataFrame:
     if not parsed_rows:
         return pd.DataFrame()
 
-    columns = ["time"] + [f"{RO_NAMES[i]}" for i in range(max_signals)]
+    columns = ["time"] + [f"{READ_NAMES[i]}" for i in range(max_signals)]
 
     df = pd.DataFrame(parsed_rows, columns=columns)
     df.sort_values("time", inplace=True)  # redundant

@@ -218,7 +218,7 @@ func handleMonitoring(conn net.Conn) {
 	// error channel to get potential error
 	errCh := make(chan error, 1)
 	defer close(errCh)
-	// start non-interactive monitoring
+	// start monitoring
 	go simulator.Start(my_types.Monitoring, rawTrajectory, errCh, nil, nil, nil, wg)
 	wg.Wait()
 	select {
@@ -259,7 +259,7 @@ func handleFalsification(conn net.Conn) {
 	defer close(errCh)
 	resCh := make(chan my_types.OutputTrace, 1)
 	defer close(resCh)
-	// start non-interactive falsification
+	// start falsification
 	// todo: handle falsification on the server
 	go simulator.Start(my_types.Falsification, rawTrajectory, errCh, resCh, nil, nil, wg)
 	wg.Wait()
