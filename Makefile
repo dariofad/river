@@ -1,4 +1,4 @@
-.phony: all build run generate vmlinux aslr_off redis start_redis stop_redis bench
+.PHONY: all build run generate vmlinux aslr_off redis start_redis stop_redis bench check-env clean
 
 EBPF_PROBE = probe
 GO_MODULE = river
@@ -10,6 +10,9 @@ BPF_CFLAGS  = -DDEBUG -O2 -Wall
 BPF_CFLAGS_BENCH  = -O2 -Wall
 
 all: run
+
+check-env:
+	bash scripts/check-env.sh
 
 vmlinux:
 	mkdir -p $(SIMULATOR_PATH)/headers
