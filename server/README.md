@@ -10,6 +10,15 @@ Data serialization is performed via MessagePack using a native
 external implementation, hence a MEX file is required (see the
 following).
 
+The server requires a generated manifest:
+
+```bash
+sudo ./river -manifest /path/to/model.river.yaml
+```
+
+Startup fails before loading eBPF when the manifest is stale or references an
+unsupported value, hook, or semantic path.
+
 ## Prerequisites and build notes
 
 1. Install MessagePack

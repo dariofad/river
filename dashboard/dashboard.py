@@ -1,9 +1,10 @@
-import json
+import os
 from collections.abc import Awaitable
 
 import pandas as pd
 import plotly.express as px
 import redis
+import yaml
 from dash import Dash, Input, Output, dash_table, dcc, html
 from pandas.core.frame import DataFrame
 
@@ -16,6 +17,7 @@ ZSET_KEY = "simulation:0"
 # Signals config
 RO_NAMES = []
 NOF_RO = 0
+MODEL_NAME = ""
 
 app = Dash(__name__)
 
@@ -25,15 +27,23 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=
 def get_config() -> None:
     global RO_NAMES
     global NOF_RO
+    global MODEL_NAME
     RO_NAMES = []
-    with open("../simulator/config.json") as f:
-        config = json.load(f)
-        READ_TIMING_O = config["READ_TIMING_O"]
-        if READ_TIMING_O:
-            for sign in READ_TIMING_O["SIGNALS"]:
-                sign_name = sign["SIGN_NAME"]
-                RO_NAMES.append(sign_name)
-            NOF_RO = len(READ_TIMING_O["SIGNALS"])
+    manifest_path = os.environ.get("RIVER_MANIFEST")
+    if not manifest_path:
+        raise RuntimeError("RIVER_MANIFEST must point to the server manifest")
+    with open(manifest_path, encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    model = next(model for model in config["models"] if model.get("selected", False))
+    MODEL_NAME = model["name"]
+    selected = [
+        signal
+        for category in ("inputs", "outputs")
+        for signal in model.get(category, [])
+        if signal.get("selected", False)
+    ]
+    RO_NAMES = [f"{MODEL_NAME}.{signal['name']}" for signal in selected]
+    NOF_RO = len(RO_NAMES)
 
 
 def get_df() -> DataFrame:
@@ -42,7 +52,7 @@ def get_df() -> DataFrame:
     # get the current configuration
     get_config()
     # get the data from the cache
-    raw_data = r.zrange(ZSET_KEY, 0, -1)
+    raw_data = r.zrange(f"simulation:0:{MODEL_NAME}", 0, -1)
     if isinstance(raw_data, Awaitable):
         raise TypeError("redis.zrange returned an awaitable response")
     raw_data = list(raw_data)
@@ -118,4 +128,7 @@ def update_dashboard(n):
 
 
 if __name__ == "__main__":
+    # Validate at startup rather than delaying this failure until the first
+    # browser refresh/callback.
+    get_config()
     app.run(debug=False, host="0.0.0.0", port=8050)

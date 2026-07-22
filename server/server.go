@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dariofad/river/manifest"
 	"github.com/dariofad/river/my_types"
 	"github.com/dariofad/river/simulator"
 	"github.com/vmihailenco/msgpack/v5"
@@ -19,6 +20,11 @@ import (
 var VERBOSE bool
 var BENCH bool
 var BUSY sync.Mutex
+var runtimePlan *manifest.RuntimePlan
+
+func Configure(plan *manifest.RuntimePlan) {
+	runtimePlan = plan
+}
 
 func StartService(port uint16, srv my_types.Service) {
 
@@ -34,7 +40,7 @@ func StartService(port uint16, srv my_types.Service) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Print("%s server accepted connection, %s", srv.String(), err)
+			log.Printf("%s server accepted connection, %s", srv.String(), err)
 			continue
 		}
 		log.Printf("[->] %s server accepted connection", srv.String())
@@ -219,7 +225,7 @@ func handleMonitoring(conn net.Conn) {
 	errCh := make(chan error, 1)
 	defer close(errCh)
 	// start non-interactive monitoring
-	go simulator.Start(my_types.Monitoring, rawTrajectory, errCh, nil, nil, nil, wg)
+	go simulator.Start(runtimePlan, my_types.Monitoring, rawTrajectory, errCh, nil, nil, nil, wg)
 	wg.Wait()
 	select {
 	case err = <-errCh:
@@ -261,7 +267,7 @@ func handleFalsification(conn net.Conn) {
 	defer close(resCh)
 	// start non-interactive falsification
 	// todo: handle falsification on the server
-	go simulator.Start(my_types.Falsification, rawTrajectory, errCh, resCh, nil, nil, wg)
+	go simulator.Start(runtimePlan, my_types.Falsification, rawTrajectory, errCh, resCh, nil, nil, wg)
 	wg.Wait()
 	// check simulation result
 	select {
@@ -341,7 +347,7 @@ func handleStatePerturbation(conn net.Conn) {
 	statePertCh := make(chan []my_types.StateRecord, 24*512) // 12 KB buffer
 	defer close(statePertCh)
 	// start the simulation (async)
-	go simulator.Start(my_types.StatePerturbation, rawTrajectory, errCh, resCh, nil, statePertCh, wg)
+	go simulator.Start(runtimePlan, my_types.StatePerturbation, rawTrajectory, errCh, resCh, nil, statePertCh, wg)
 	// helper to check simulation ended without blocking
 	done := make(chan struct{})
 	go func() {
@@ -435,7 +441,7 @@ func handleSignalPerturbation(conn net.Conn) {
 	pertCh := make(chan map[string]interface{}, 1024*1024*64) // 32 MB buffer
 	defer close(pertCh)
 	// start the simulation (async)
-	go simulator.Start(my_types.SignalPerturbation, rawTrajectory, errCh, resCh, pertCh, nil, wg)
+	go simulator.Start(runtimePlan, my_types.SignalPerturbation, rawTrajectory, errCh, resCh, pertCh, nil, wg)
 	// helper to check simulation ended without blocking
 	done := make(chan struct{})
 	go func() {

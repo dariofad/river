@@ -777,6 +777,7 @@ dependencies = [
     { name = "dash" },
     { name = "pandas" },
     { name = "plotly" },
+    { name = "pyyaml" },
     { name = "redis" },
 ]
 
@@ -785,6 +786,7 @@ requires-dist = [
     { name = "dash", specifier = "==4.0.0" },
     { name = "pandas", specifier = "==3.0.1" },
     { name = "plotly", specifier = "==6.6.0" },
+    { name = "pyyaml", specifier = "==6.0.3" },
     { name = "redis", specifier = "==7.3.0" },
 ]
 
