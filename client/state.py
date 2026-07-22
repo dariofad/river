@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import json
 import socket
 import sys
 import time
@@ -9,9 +8,7 @@ import time
 import demos_config
 import msgpack
 
-CYCLES: int = 0
-with open("../simulator/config.json", encoding="utf-8") as file:
-    CYCLES = int(json.load(file)["NOF_CYCLES"])
+CYCLES: int = 1000
 INJECTIONS: int = 0
 
 PORT = 8082
@@ -74,17 +71,20 @@ def srv_connect(host: str, model: str, config: str) -> bytearray:
 def main() -> None:
     global MODEL
     global CONFIG
+    global CYCLES
     parser = argparse.ArgumentParser(
         description="Connect to the simulation server via TCP",
     )
     parser.add_argument("host", help="Server hostname or IP address")
     parser.add_argument("model", help="Model id")
     parser.add_argument("config", help="Config id")
+    parser.add_argument("--cycles", type=int, default=1000, help="Logical model cycles")
 
     args = parser.parse_args()
     HOST = args.host
     MODEL = args.model
     CONFIG = args.config
+    CYCLES = args.cycles
 
     print(f"host:\t{HOST}")
     print(f"model:\t{MODEL}")

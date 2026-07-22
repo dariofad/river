@@ -6,9 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/dariofad/river/manifest"
 	"github.com/dariofad/river/my_types"
 	"github.com/dariofad/river/server"
 	"github.com/dariofad/river/simulator"
@@ -20,12 +22,24 @@ var MONITORING_PORT uint16 = 8080
 var FALSIFICATION_PORT uint16 = 8081
 var STATE_PERTURBATION_PORT uint16 = 8082
 var SIGNAL_PERTURBATION_PORT uint16 = 8083
+var MANIFEST_PATH string
 
 func main() {
 
 	// configure the server
 	parseCmdLineOptions()
 	configureLogger()
+	configured, err := manifest.Read(MANIFEST_PATH)
+	if err != nil {
+		log.Printf("Cannot load manifest: %v", err)
+		os.Exit(1)
+	}
+	plan, err := manifest.Compile(configured)
+	if err != nil {
+		log.Printf("Cannot compile manifest: %v", err)
+		os.Exit(1)
+	}
+	server.Configure(plan)
 	simulator.RemoveMemlock()
 	// start the services
 	go server.StartService(MONITORING_PORT, my_types.Monitoring)
@@ -42,7 +56,14 @@ func parseCmdLineOptions() {
 
 	verbP := flag.Bool("v", false, "Enable verbose mode")
 	benchP := flag.Bool("b", false, "Enable bench mode")
+	manifestP := flag.String("manifest", "", "Generated River YAML manifest (required)")
 	flag.Parse()
+	if *manifestP == "" {
+		fmt.Fprintln(os.Stderr, "-manifest is required")
+		flag.Usage()
+		os.Exit(2)
+	}
+	MANIFEST_PATH = *manifestP
 	VERBOSE = *verbP
 	BENCH = *benchP
 	server.VERBOSE = VERBOSE

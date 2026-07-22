@@ -12,10 +12,9 @@ type ModelRecord struct {
 }
 
 type StateRecord struct {
-	Time      uint32  `msgpack:"TIME"`
-	ValueSize uint32  `msgpack:"VALUE_SIZE"`
-	Addr      uint64  `msgpack:"ADDR"`
-	Value     float64 `msgpack:"VALUE"`
+	Time  uint32      `msgpack:"TIME"`
+	State string      `msgpack:"STATE"`
+	Value interface{} `msgpack:"VALUE"`
 }
 
 func ModelRecordToCSVString(record ModelRecord) string {

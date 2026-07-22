@@ -44,6 +44,11 @@ is also possible to interact with the server using a Matlab session.
 ## Build and run the server
 
 - Create the redis container with `make redis` (only the first time)
-- Build and run the server with `make`
+- Generate an editable manifest as described in `simulator/README.md`
+- Build with `make build`
+- Run with `sudo ./river -manifest /path/to/model.river.yaml`
+
+River validates the manifest against the ELF before launching it. No GDB
+addresses, source-line offsets, or ASLR changes are required.
 
 You can get additional feedback checking the output of the eBPF probes at `/sys/kernel/tracing/trace_pipe`.

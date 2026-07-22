@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
-import json
-import random
 import socket
 import sys
-import time
 
 import demos_config
 import msgpack
 
-CYCLES: int = 0
-with open("../simulator/config.json", encoding="utf-8") as file:
-    CYCLES = int(json.load(file)["NOF_CYCLES"])
+CYCLES: int = 1000
 INJECTIONS: int = 0
 
 PORT = 8083
@@ -60,9 +55,9 @@ def srv_connect(host: str, model: str, config: str) -> bytearray:
             # wait for ack
             response = sock.recv(64)
             print(response.decode("utf-8"))
-            # random sleep (between 1 and 6 seconds)
-            if ITERNO + 1 != INJECTIONS:
-                time.sleep(random.randint(1, PERIOD // 2))
+            # The ``time`` field selects logical model cycles.  Do not delay
+            # the next update in wall-clock time: fast generated models can
+            # complete their full trajectory before such a delay expires.
         # wait for final response
         response = sock.recv(64)
         # Close the socket
@@ -77,17 +72,20 @@ def srv_connect(host: str, model: str, config: str) -> bytearray:
 
 
 def main() -> None:
+    global CYCLES
     parser = argparse.ArgumentParser(
         description="Connect to the simulation server via TCP",
     )
     parser.add_argument("host", help="Server hostname or IP address")
     parser.add_argument("model", help="Model id")
     parser.add_argument("config", help="Config id")
+    parser.add_argument("--cycles", type=int, default=1000, help="Logical model cycles")
 
     args = parser.parse_args()
     HOST = args.host
     MODEL = args.model
     CONFIG = args.config
+    CYCLES = args.cycles
 
     print(f"host:\t{HOST}")
     print(f"model:\t{MODEL}")
