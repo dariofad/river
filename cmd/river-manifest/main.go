@@ -38,8 +38,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	exports := make([]string, 0, len(descriptors)+len(descriptorJSONs))
-	for _, descriptor := range descriptors {
+	descriptorPaths, err := absolutePaths(descriptors)
+	if err != nil {
+		log.Fatal(err)
+	}
+	descriptorJSONPaths, err := absolutePaths(descriptorJSONs)
+	if err != nil {
+		log.Fatal(err)
+	}
+	exports := make([]string, 0, len(descriptorPaths)+len(descriptorJSONPaths))
+	for _, descriptor := range descriptorPaths {
 		exported, cleanup, err := exportDMR(descriptor)
 		if err != nil {
 			log.Fatal(err)
@@ -47,17 +55,29 @@ func main() {
 		exports = append(exports, exported)
 		defer cleanup()
 	}
-	exports = append(exports, descriptorJSONs...)
+	exports = append(exports, descriptorJSONPaths...)
 	if len(exports) > 0 {
 		if err := manifest.EnrichDescriptors(m, exports); err != nil {
 			log.Fatal(err)
 		}
-		m.Artifact.DescriptorSources = append(append([]string{}, descriptors...), descriptorJSONs...)
+		m.Artifact.DescriptorSources = append(descriptorPaths, descriptorJSONPaths...)
 	}
 	if err := manifest.Write(*output, m); err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("wrote %s", *output)
+}
+
+func absolutePaths(paths []string) ([]string, error) {
+	abs := make([]string, 0, len(paths))
+	for _, path := range paths {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return nil, fmt.Errorf("resolve descriptor path %q: %w", path, err)
+		}
+		abs = append(abs, absolute)
+	}
+	return abs, nil
 }
 
 type stringList []string

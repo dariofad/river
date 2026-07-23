@@ -94,21 +94,17 @@ func enrichDescriptor(m *Manifest, exported DescriptorExport) error {
 				name = semantic.GraphicalName
 			}
 			*items = append(*items, Data{
-				Name:          name,
-				Path:          exported.ModelName + "." + name,
-				GraphicalName: semantic.GraphicalName,
-				SID:           semantic.SID,
-				Category:      semantic.Category,
-				Selected:      false,
-				Supported:     false,
-				Reason:        "Code Descriptor item has no addressable DWARF implementation",
+				Name:      name,
+				Path:      exported.ModelName + "." + name,
+				SID:       semantic.SID,
+				Category:  semantic.Category,
+				Enabled:   false,
+				Supported: false,
+				Reason:    "Code Descriptor item has no addressable DWARF implementation",
 			})
 			continue
 		}
 		item := &(*items)[matched]
-		if semantic.GraphicalName != "" {
-			item.GraphicalName = semantic.GraphicalName
-		}
 		item.SID = semantic.SID
 	}
 	return nil

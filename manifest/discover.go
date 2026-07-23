@@ -111,12 +111,11 @@ func inspect(binary string) (*discovery, error) {
 
 func buildModel(name string, class *dwarf.StructType, funcs map[string]string) *discoveredModel {
 	m := Model{
-		Name:     name,
-		Selected: true,
+		Name:    name,
+		Enabled: true,
 		Hooks: HookRoles{
-			InputWrite: "step.entry",
-			StateWrite: "step.entry",
-			Sample:     "step.return",
+			Write: "step.entry",
+			Read:  "step.return",
 		},
 	}
 	fnNames := make([]string, 0, len(funcs))
@@ -127,32 +126,26 @@ func buildModel(name string, class *dwarf.StructType, funcs map[string]string) *
 	for _, fn := range fnNames {
 		for _, phase := range []string{"entry", "return"} {
 			h := Hook{ID: fn + "." + phase, Function: fn, Phase: phase}
-			if fn == "step" && phase == "entry" {
-				h.AllowedRoles = []string{"input_write", "state_write"}
-			}
-			if fn == "step" && phase == "return" {
-				h.AllowedRoles = []string{"sample"}
-			}
-			m.PossibleHooks = append(m.PossibleHooks, h)
+			m.AvailableHooks = append(m.AvailableHooks, h)
 		}
 	}
 	dm := &discoveredModel{Manifest: m, Class: class, Funcs: funcs, Data: make(map[string]RuntimeData)}
 	for _, field := range class.Field {
 		switch {
 		case strings.HasSuffix(field.Name, "_U"):
-			dm.addLeaves(field, "input", true, true, &dm.Manifest.Inputs)
+			dm.addLeaves(field, "input", true, &dm.Manifest.Inputs)
 		case strings.HasSuffix(field.Name, "_Y"):
-			dm.addLeaves(field, "output", true, false, &dm.Manifest.Outputs)
+			dm.addLeaves(field, "output", true, &dm.Manifest.Outputs)
 		case strings.HasSuffix(field.Name, "_X"):
-			dm.addLeaves(field, "continuous_state", false, true, &dm.Manifest.States)
+			dm.addLeaves(field, "continuous_state", false, &dm.Manifest.States)
 		case strings.HasSuffix(field.Name, "_DW"):
-			dm.addLeaves(field, "block_state", false, true, &dm.Manifest.States)
+			dm.addLeaves(field, "block_state", false, &dm.Manifest.States)
 		}
 	}
 	return dm
 }
 
-func (dm *discoveredModel) addLeaves(field *dwarf.StructField, category string, selected, writable bool, dst *[]Data) {
+func (dm *discoveredModel) addLeaves(field *dwarf.StructField, category string, enabled bool, dst *[]Data) {
 	prefix := dm.Manifest.Name + "." + field.Name
 	var walk func(dwarf.Type, string, int64)
 	walk = func(t dwarf.Type, path string, offset int64) {
@@ -165,10 +158,10 @@ func (dm *discoveredModel) addLeaves(field *dwarf.StructField, category string, 
 		}
 		primitive, ok := primitiveOf(t)
 		leaf := path[strings.LastIndex(path, ".")+1:]
-		item := Data{Name: leaf, Path: path, GraphicalName: leaf, Category: category, Selected: selected && ok, Supported: ok, Writable: writable && ok}
+		item := Data{Name: leaf, Path: path, Category: category, Enabled: enabled && ok, Supported: ok}
 		if ok {
 			item.Type = primitive.Name
-			dm.Data[path] = RuntimeData{Path: path, Name: leaf, Category: category, Type: primitive, Base: BaseThis, Offset: offset, Writable: writable}
+			dm.Data[path] = RuntimeData{Path: path, Name: leaf, Category: category, Type: primitive, Base: BaseThis, Offset: offset}
 		} else {
 			item.Type = t.String()
 			item.Reason = "only scalar primitive values are supported"
@@ -194,11 +187,11 @@ func (dm *discoveredModel) addStaticLeaves(name string, t dwarf.Type, symbolValu
 		}
 		primitive, ok := primitiveOf(current)
 		leaf := path[strings.LastIndex(path, ".")+1:]
-		item := Data{Name: leaf, Path: path, GraphicalName: leaf, Category: "parameter", Supported: ok, Writable: ok}
+		item := Data{Name: leaf, Path: path, Category: "parameter", Supported: ok}
 		if ok {
 			item.Type = primitive.Name
 			delta := int64(symbolValue) - int64(stepValue) + memberOffset
-			dm.Data[path] = RuntimeData{Path: path, Name: leaf, Category: "parameter", Type: primitive, Base: BaseELF, Offset: delta, Writable: true}
+			dm.Data[path] = RuntimeData{Path: path, Name: leaf, Category: "parameter", Type: primitive, Base: BaseELF, Offset: delta}
 		} else {
 			item.Type = current.String()
 			item.Reason = "only scalar primitive values are supported"

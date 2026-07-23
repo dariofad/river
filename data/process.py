@@ -11,15 +11,15 @@ PROGRAMS = {"uprobe_model_entry", "uprobe_model_return"}
 def parse_manifest(path: str) -> dict[str, int]:
     with open(path, encoding="utf-8") as file:
         manifest = yaml.safe_load(file)
-    selected_models = [model for model in manifest["models"] if model.get("selected")]
+    enabled_models = [model for model in manifest["models"] if model.get("enabled")]
     entry_values = sum(
-        sum(1 for value in model.get(category, []) if value.get("selected"))
-        for model in selected_models
+        sum(1 for value in model.get(category, []) if value.get("enabled"))
+        for model in enabled_models
         for category in ("inputs", "states")
     )
     return_values = sum(
-        sum(1 for value in model.get(category, []) if value.get("selected"))
-        for model in selected_models
+        sum(1 for value in model.get(category, []) if value.get("enabled"))
+        for model in enabled_models
         for category in ("inputs", "outputs")
     )
     return {
@@ -63,7 +63,7 @@ def main() -> None:
         )
     for name, values in sorted(parse_stats(report, args.manifest).items()):
         print(f"{name}: {values['average'] / 1000:.3f} µs")
-        print(f"{name} per selected value: {values['average_per_value'] / 1000:.3f} µs")
+        print(f"{name} per enabled value: {values['average_per_value'] / 1000:.3f} µs")
 
 
 if __name__ == "__main__":

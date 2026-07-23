@@ -109,15 +109,15 @@ func startPlan(
 	}()
 	for _, model := range plan.Models {
 		cookie := uint64(model.ID) + 1
-		entry, err := executable.Uprobe(model.InputWriteHook.Symbol, objects.UprobeModelEntry, &link.UprobeOptions{Cookie: cookie})
+		entry, err := executable.Uprobe(model.WriteHook.Symbol, objects.UprobeModelEntry, &link.UprobeOptions{Cookie: cookie})
 		if err != nil {
-			errCh <- fmt.Errorf("attach %s input/state hook: %w", model.Name, err)
+			errCh <- fmt.Errorf("attach %s perturbation hook: %w", model.Name, err)
 			return
 		}
 		links = append(links, entry)
-		sample, err := executable.Uretprobe(model.SampleHook.Symbol, objects.UprobeModelReturn, &link.UprobeOptions{Cookie: cookie})
+		sample, err := executable.Uretprobe(model.ReadHook.Symbol, objects.UprobeModelReturn, &link.UprobeOptions{Cookie: cookie})
 		if err != nil {
-			errCh <- fmt.Errorf("attach %s sample hook: %w", model.Name, err)
+			errCh <- fmt.Errorf("attach %s input/output read hook: %w", model.Name, err)
 			return
 		}
 		links = append(links, sample)
@@ -245,7 +245,7 @@ func runtimeNames(plan *manifest.RuntimePlan) (map[string]manifest.RuntimeData, 
 	ambiguous := make(map[string]bool)
 	for _, model := range plan.Models {
 		for _, data := range model.Inputs {
-			for _, name := range []string{data.Path, model.Name + "." + data.Name, data.Name, strings.ToUpper(data.Name), model.Name + "." + data.GraphicalName, data.GraphicalName} {
+			for _, name := range []string{data.Path, model.Name + "." + data.Name, data.Name, strings.ToUpper(data.Name)} {
 				if name == "" {
 					continue
 				}
@@ -402,8 +402,8 @@ func consumeNamedStates(ctx context.Context, plan *manifest.RuntimePlan, in <-ch
 			}
 			for _, record := range records {
 				state, ok := plan.StateByName[record.State]
-				if !ok || !state.Writable {
-					errCh <- fmt.Errorf("state %q is unknown, unselected, or read-only", record.State)
+				if !ok {
+					errCh <- fmt.Errorf("state %q is unknown or disabled", record.State)
 					return
 				}
 				value, err := encodePrimitive(record.Value, state.Type)

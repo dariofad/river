@@ -25,7 +25,7 @@ func Compile(m *Manifest) (*RuntimePlan, error) {
 	plan := &RuntimePlan{Binary: m.Artifact.Binary, BuildID: d.BuildID, Cycles: m.Settings.Cycles, SampleEvery: m.Settings.SampleEvery, StateByName: make(map[string]RuntimeData)}
 	var nextDataID uint32
 	for _, configured := range m.Models {
-		if !configured.Selected {
+		if !configured.Enabled {
 			continue
 		}
 		dm := d.Models[configured.Name]
@@ -33,18 +33,15 @@ func Compile(m *Manifest) (*RuntimePlan, error) {
 			return nil, fmt.Errorf("model %q is not present in the current ELF", configured.Name)
 		}
 		rm := RuntimeModel{ID: uint32(len(plan.Models)), Name: configured.Name, StepSymbol: dm.Funcs["step"]}
-		if rm.InputWriteHook, err = compileHook(configured, dm, configured.Hooks.InputWrite, "input_write"); err != nil {
+		if rm.WriteHook, err = compileHook(configured, dm, configured.Hooks.Write); err != nil {
 			return nil, err
 		}
-		if rm.StateWriteHook, err = compileHook(configured, dm, configured.Hooks.StateWrite, "state_write"); err != nil {
-			return nil, err
-		}
-		if rm.SampleHook, err = compileHook(configured, dm, configured.Hooks.Sample, "sample"); err != nil {
+		if rm.ReadHook, err = compileHook(configured, dm, configured.Hooks.Read); err != nil {
 			return nil, err
 		}
 		compileData := func(items []Data, dst *[]RuntimeData) error {
 			for _, item := range items {
-				if !item.Selected {
+				if !item.Enabled {
 					continue
 				}
 				if !item.Supported {
@@ -58,7 +55,6 @@ func Compile(m *Manifest) (*RuntimePlan, error) {
 					return fmt.Errorf("type for %q changed from %q to %q; regenerate the manifest", item.Path, item.Type, rd.Type.Name)
 				}
 				rd.ID, rd.ModelID = nextDataID, rm.ID
-				rd.GraphicalName = item.GraphicalName
 				nextDataID++
 				*dst = append(*dst, rd)
 			}
@@ -88,20 +84,10 @@ func Compile(m *Manifest) (*RuntimePlan, error) {
 	return plan, nil
 }
 
-func compileHook(configured Model, dm *discoveredModel, id, role string) (RuntimeHook, error) {
-	for _, h := range dm.Manifest.PossibleHooks {
+func compileHook(configured Model, dm *discoveredModel, id string) (RuntimeHook, error) {
+	for _, h := range dm.Manifest.AvailableHooks {
 		if h.ID != id {
 			continue
-		}
-		allowed := false
-		for _, candidate := range h.AllowedRoles {
-			if candidate == role {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return RuntimeHook{}, fmt.Errorf("hook %q is not valid for role %q", id, role)
 		}
 		symbol := dm.Funcs[h.Function]
 		if symbol == "" {

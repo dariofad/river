@@ -135,15 +135,15 @@ func TestStaticParameterUsesELFRelativeBase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	selected := false
+	enabled := false
 	for i := range m.Models[0].States {
 		if m.Models[0].States[i].Category == "parameter" && m.Models[0].States[i].Supported {
-			m.Models[0].States[i].Selected = true
-			selected = true
+			m.Models[0].States[i].Enabled = true
+			enabled = true
 			break
 		}
 	}
-	if !selected {
+	if !enabled {
 		t.Fatal("no static scalar parameter discovered")
 	}
 	plan, err := Compile(m)

@@ -53,26 +53,25 @@ func TestParseRuntimeRecordRejectsTruncation(t *testing.T) {
 	}
 }
 
-func TestRuntimeNamesAcceptGraphicalName(t *testing.T) {
+func TestRuntimeNamesAcceptName(t *testing.T) {
 	data := manifest.RuntimeData{
-		ID:            4,
-		ModelID:       0,
-		Name:          "PedalAngle",
-		GraphicalName: "Pedal Angle",
-		Path:          "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle",
+		ID:      4,
+		ModelID: 0,
+		Name:    "Pedal Angle",
+		Path:    "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle",
 	}
 	names, ambiguous := runtimeNames(&manifest.RuntimePlan{
 		Models: []manifest.RuntimeModel{{Name: "AbstractFuelControl_M1", Inputs: []manifest.RuntimeData{data}}},
 	})
 	if got, ok := names["Pedal Angle"]; !ok || got.ID != data.ID {
-		t.Fatalf("graphical name did not resolve: %#v", names)
+		t.Fatalf("name did not resolve: %#v", names)
 	}
 	if ambiguous["Pedal Angle"] {
-		t.Fatal("single graphical name must not be ambiguous")
+		t.Fatal("single name must not be ambiguous")
 	}
 }
 
-func TestRuntimeNamesAcceptAFCDescriptorNames(t *testing.T) {
+func TestRuntimeNamesRetainGeneratedAFCNames(t *testing.T) {
 	for _, filename := range []string{"afc-with-descriptor.river.yaml", "afc.river.yaml"} {
 		manifestPath, err := filepath.Abs(filepath.Join("..", filename))
 		if err != nil {
@@ -87,10 +86,10 @@ func TestRuntimeNamesAcceptAFCDescriptorNames(t *testing.T) {
 			t.Fatal(err)
 		}
 		names, ambiguous := runtimeNames(plan)
-		for _, name := range []string{"Pedal Angle", "Engine Speed"} {
+		for _, name := range []string{"PedalAngle", "EngineSpeed"} {
 			data, ok, isAmbiguous := resolveRuntimeName(names, ambiguous, name)
 			if !ok || isAmbiguous || data.ID > 1 {
-				t.Fatalf("%s: descriptor input name %q is missing or ambiguous", filename, name)
+				t.Fatalf("%s: generated input name %q is missing or ambiguous", filename, name)
 			}
 		}
 	}

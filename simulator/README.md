@@ -31,7 +31,7 @@ go run ./cmd/river-manifest generate \
   --output dualacc.river.yaml
 ```
 
-Inputs and outputs are selected by default; internal states are listed but
+Inputs and outputs are enabled by default; internal states are listed but
 disabled. Edit selections and settings, then start River with:
 
 ```bash

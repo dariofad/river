@@ -8,10 +8,9 @@ import numpy as np
 EGO_D_LEAD = "d_lead"
 TOY_X = "x"
 TOY_Y = "y"
-# Code Descriptor graphical names are accepted by the runtime as aliases for
-# the generated implementation identifiers (PedalAngle and EngineSpeed).
-AFC_PEDAL_ANGLE = "Pedal Angle"
-AFC_ENGINE_SPEED = "Engine Speed"
+# Canonical generated identifiers from the AFC manifest.
+AFC_PEDAL_ANGLE = "PedalAngle"
+AFC_ENGINE_SPEED = "EngineSpeed"
 AFC_INTEGRATOR_STATE = (
     "AbstractFuelControl_M1.AbstractFuelControl_M1_X.Integrator_CSTATE"
 )

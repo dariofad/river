@@ -34,15 +34,15 @@ def get_config() -> None:
         raise RuntimeError("RIVER_MANIFEST must point to the server manifest")
     with open(manifest_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
-    model = next(model for model in config["models"] if model.get("selected", False))
+    model = next(model for model in config["models"] if model.get("enabled", False))
     MODEL_NAME = model["name"]
-    selected = [
+    enabled = [
         signal
         for category in ("inputs", "outputs")
         for signal in model.get(category, [])
-        if signal.get("selected", False)
+        if signal.get("enabled", False)
     ]
-    RO_NAMES = [f"{MODEL_NAME}.{signal['name']}" for signal in selected]
+    RO_NAMES = [f"{MODEL_NAME}.{signal['name']}" for signal in enabled]
     NOF_RO = len(RO_NAMES)
 
 
