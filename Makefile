@@ -1,8 +1,9 @@
-.PHONY: all build run generate vmlinux redis start_redis stop_redis bench check-env clean manifest
+.PHONY: all bench build build_bench check-env clean generate generate_bench manifest run start_redis stop_redis vmlinux
 
-EBPF_PROBE = probe
-GO_MODULE = river
+SERVER_BINARY = river
+MANIFEST_GENERATOR_BINARY = river-manifest
 SIMULATOR_PATH := simulator
+REDIS_CONTAINER := redis
 REDIS_PORT := 6379
 ARCH:= $(shell go env GOARCH)
 MANIFEST ?=
@@ -25,43 +26,40 @@ generate_bench: vmlinux
 	cd $(SIMULATOR_PATH); BPF2GO_CFLAGS="$(BPF_CFLAGS_BENCH)" go generate
 
 build: generate
+build_bench: generate_bench
+
+build build_bench:
 # with CGO_ENABLED=0 the build doesn't depend on libc
 	@CGO_ENABLED=0 GOARCH=$(ARCH) go build
-build_bench: generate_bench
-	@CGO_ENABLED=0 GOARCH=$(ARCH) go build
-
-redis:
-	docker create --name redis -p $(REDIS_PORT):$(REDIS_PORT) redis:latest
+	@CGO_ENABLED=0 GOARCH=$(ARCH) go build -o $(MANIFEST_GENERATOR_BINARY) ./cmd/river-manifest
 
 start_redis:
-	docker start redis
-
-stop_redis:
-	docker stop redis
-
-_run: | start_redis
-	@if docker ps -a --filter "name=$(CONTAINER_NAME)" --format "{{.ID}}" | grep -q .; then \
-		echo "-> container $(CONTAINER_NAME) is already running or exists. Skipping creation."; \
-	else \
-		echo "-> creating and running container $(CONTAINER_NAME)..."; \
-		docker run -d --name $(CONTAINER_NAME) $(IMAGE_NAME); \
-		sleep 3; \
+	@if ! docker container inspect $(REDIS_CONTAINER) >/dev/null 2>&1; then \
+		docker create --name $(REDIS_CONTAINER) -p $(REDIS_PORT):$(REDIS_PORT) redis:latest >/dev/null; \
+	fi
+	@if [ "$$(docker container inspect -f '{{.State.Running}}' $(REDIS_CONTAINER))" != "true" ]; then \
+		docker start $(REDIS_CONTAINER) >/dev/null; \
 	fi
 
-_run_debug: | build _run 
-_run_bench: | build_bench _run
+stop_redis:
+	@if docker container inspect $(REDIS_CONTAINER) >/dev/null 2>&1 && \
+		[ "$$(docker container inspect -f '{{.State.Running}}' $(REDIS_CONTAINER))" = "true" ]; then \
+		docker stop $(REDIS_CONTAINER); \
+	fi
 
-run: _run_debug
+manifest: build
+	@test -n "$(MODEL)" || (echo "MODEL=/path/to/model is required"; exit 2)
 	@test -n "$(MANIFEST)" || (echo "MANIFEST=/path/to/model.river.yaml is required"; exit 2)
-	@sudo ./$(GO_MODULE) -manifest "$(MANIFEST)"
-bench: _run_bench
+	@./$(MANIFEST_GENERATOR_BINARY) generate --binary "$(MODEL)" --output "$(MANIFEST)"
+
+run: build start_redis
+	@test -n "$(MANIFEST)" || (echo "MANIFEST=/path/to/model.river.yaml is required"; exit 2)
+	@sudo ./$(SERVER_BINARY) -manifest "$(MANIFEST)"
+bench: build_bench start_redis
 	@test -n "$(MANIFEST)" || (echo "MANIFEST=/path/to/model.river.yaml is required"; exit 2)
 	sudo sysctl -w kernel.bpf_stats_enabled=1
-	@sudo ./$(GO_MODULE) -b -manifest "$(MANIFEST)"
+	@sudo ./$(SERVER_BINARY) -b -manifest "$(MANIFEST)"
 
 clean:
 	@rm -rf $(SIMULATOR_PATH)/headers
-	@rm -rf $(GO_MODULE) $(SIMULATOR_PATH)/$(EBPF_PROBE)_bpf*
-
-manifest:
-	@go run ./cmd/river-manifest generate --binary "$(MODEL)" --output "$(OUT)"
+	@rm -rf $(SERVER_BINARY) $(MANIFEST_GENERATOR_BINARY) $(SIMULATOR_PATH)/probe_*_bpf*.*
