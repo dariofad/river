@@ -30,7 +30,38 @@ type relocationConfig struct {
 	signalAddresses []uint64
 }
 
+const maxSignalsPerDirection = 16
+
+func uprobeCookie(groupBase, groupSize int) uint64 {
+	return uint64(groupBase<<4 | (groupSize - 1))
+}
+
+func validateSignalGroups(kind string, groups []my_types.Group) error {
+	total := 0
+	for _, group := range groups {
+		groupSize := len(group.Signals)
+		if groupSize == 0 {
+			return fmt.Errorf("%s group %q contains no signals", kind, group.Symbol)
+		}
+		if groupSize > maxSignalsPerDirection {
+			return fmt.Errorf("%s group %q contains %d signals; at most %d are supported", kind, group.Symbol, groupSize, maxSignalsPerDirection)
+		}
+		total += groupSize
+		if total > maxSignalsPerDirection {
+			return fmt.Errorf("configuration contains %d %s signals; at most %d are supported", total, kind, maxSignalsPerDirection)
+		}
+	}
+	return nil
+}
+
 func configureRelocation(config my_types.Configuration) (*relocationConfig, error) {
+	if err := validateSignalGroups("read", config.Reads); err != nil {
+		return nil, err
+	}
+	if err := validateSignalGroups("write", config.Writes); err != nil {
+		return nil, err
+	}
+
 	image, err := inspectELF(config.ModelPath)
 	if err != nil {
 		return nil, err
@@ -50,9 +81,6 @@ func configureRelocation(config my_types.Configuration) (*relocationConfig, erro
 		{kind: "write", groups: config.Writes, writable: true},
 	} {
 		for _, group := range item.groups {
-			if len(group.Signals) > 15 {
-				return nil, fmt.Errorf("%s group %q contains %d signals; the uprobe cookie supports at most 15", item.kind, group.Symbol, len(group.Signals))
-			}
 			offset, parseErr := strconv.ParseUint(group.Offset, 10, 64)
 			if parseErr != nil {
 				return nil, fmt.Errorf("parse %s hook offset %q: %w", item.kind, group.Offset, parseErr)

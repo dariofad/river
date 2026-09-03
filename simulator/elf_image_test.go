@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/dariofad/river/my_types"
 )
 
 func TestHookAddress(t *testing.T) {
@@ -111,5 +113,39 @@ func TestAddUint64(t *testing.T) {
 	}
 	if _, ok := addUint64(math.MaxUint64, 1); ok {
 		t.Fatal("overflow was accepted")
+	}
+}
+
+func TestValidateSignalGroups(t *testing.T) {
+	groups := []my_types.Group{{Symbol: "step", Signals: make([]my_types.Signal, maxSignalsPerDirection)}}
+	if err := validateSignalGroups("read", groups); err != nil {
+		t.Fatalf("16-signal group rejected: %v", err)
+	}
+
+	groups[0].Signals = make([]my_types.Signal, maxSignalsPerDirection+1)
+	if err := validateSignalGroups("read", groups); err == nil {
+		t.Fatal("17-signal group accepted")
+	}
+
+	groups = []my_types.Group{
+		{Symbol: "first", Signals: make([]my_types.Signal, 8)},
+		{Symbol: "second", Signals: make([]my_types.Signal, 9)},
+	}
+	if err := validateSignalGroups("write", groups); err == nil {
+		t.Fatal("17 total write signals accepted")
+	}
+
+	if err := validateSignalGroups("read", []my_types.Group{{Symbol: "empty"}}); err == nil {
+		t.Fatal("empty signal group accepted")
+	}
+}
+
+func TestUprobeCookieSupportsSixteenSignals(t *testing.T) {
+	cookie := uprobeCookie(7, maxSignalsPerDirection)
+	if base := cookie >> 4; base != 7 {
+		t.Fatalf("cookie base = %d, want 7", base)
+	}
+	if size := (cookie & 0xf) + 1; size != maxSignalsPerDirection {
+		t.Fatalf("cookie size = %d, want %d", size, maxSignalsPerDirection)
 	}
 }

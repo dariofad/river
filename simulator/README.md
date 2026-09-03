@@ -59,8 +59,9 @@ same rule.
 
 Each `READS` or `WRITES` item is an independently attached uprobe group. Its
 `OFFSET` is a decimal byte offset relative to that group's `SYMBOL`; it is not
-an absolute ELF address. A group can contain at most 15 signals because its
-size is encoded in the eBPF attach cookie.
+an absolute ELF address. A configuration can contain at most 16 read signals
+and 16 write signals. A single group can contain all 16: its size minus one is
+encoded in the lower four bits of the eBPF attach cookie.
 
 Place write hooks before the model consumes the configured inputs and read
 hooks after it has produced the configured outputs. The last read group flushes

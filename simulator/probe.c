@@ -16,9 +16,9 @@
         } while (0)
 #endif
 
-const __u32 MAX_NOF_SIGNALS = 16;
-volatile const __u32 NOF_SIGNALS_READ;    // max is currently 8
-volatile const __u32 NOF_SIGNALS_WRITTEN; // max is currently 8
+#define MAX_NOF_SIGNALS 16
+volatile const __u32 NOF_SIGNALS_READ;
+volatile const __u32 NOF_SIGNALS_WRITTEN;
 
 // timing
 volatile const __u32 MINOR_TO_MAJOR_RATIO;
@@ -28,7 +28,7 @@ __u32 time        = 0;
 __u32 log_counter = 0;
 volatile const __u32 MAX_CYCLES;
 
-__u64 stash[16]; // hardcoded
+__u64 stash[MAX_NOF_SIGNALS];
 
 // -----------------------------------------------------------------------
 // SIGNAL DATA
@@ -73,10 +73,10 @@ struct {
 } out_rb SEC(".maps");
 
 // user -> kernel space ring buffer for noise injection
-struct live_record { // todo: use a structure with dynamic len
+struct live_record {
         __u32 time;
         __u32 filler;
-        __u64 values[8]; // hardcoded
+        __u64 values[MAX_NOF_SIGNALS];
 };
 struct {
         __uint(type, BPF_MAP_TYPE_USER_RINGBUF);
@@ -277,7 +277,7 @@ static long inject_values(u64 index, void *_ctx) {
 static long get_injected_point_from_usp(struct bpf_dynptr *dynptr, __u32 *placeholder) {
 
         struct live_record *R;
-        R = bpf_dynptr_data(dynptr, 0, 8 + 8 * 8);
+        R = bpf_dynptr_data(dynptr, 0, sizeof(struct live_record));
         if (!R) {
                 return 0;
         }
@@ -296,11 +296,19 @@ static long get_injected_point_from_usp(struct bpf_dynptr *dynptr, __u32 *placeh
         }
 
 #pragma unroll
-        for (int i = 0; i < 8; ++i) { // hardcoded
+        for (int i = 0; i < 8; ++i) {
                 if (i >= NOF_SIGNALS_WRITTEN)
                         break;
                 ctx.inj_pert = R->values[i];
-                inject_values(i, &ctx);
+                // Write trajectories follow all read trajectories in the map.
+                inject_values(i + NOF_SIGNALS_READ, &ctx);
+        }
+#pragma unroll
+        for (int i = 8; i < MAX_NOF_SIGNALS; ++i) {
+                if (i >= NOF_SIGNALS_WRITTEN)
+                        break;
+                ctx.inj_pert = R->values[i];
+                inject_values(i + NOF_SIGNALS_READ, &ctx);
         }
 
         return DRAIN_SINGLE_POINT;
@@ -432,7 +440,7 @@ static inline int read_signals(__u64 cookie) {
         __u32 actual_time = time - 1;
         // extract signals within the current group
         __u32 group_base = (__u32)cookie >> 4;
-        __u32 group_size = (__u32)cookie & 0b1111;
+        __u32 group_size = ((__u32)cookie & 0b1111) + 1;
         DEBUG_P("\tgroup %d, there are %d signals to read", group_base, group_size);
 
         for (__u32 k = 0; k < MAX_NOF_SIGNALS; k++) {
@@ -457,7 +465,7 @@ static inline int read_signals(__u64 cookie) {
                 // copy the current value in the correct trajectory sequence
                 copy_user_space_value_to_map(actual_time, key, signal);
                 // prepare a copy of the value read to flush at the end of the cycle
-                if (key < 16) // explicit out of bound check
+                if (key < MAX_NOF_SIGNALS)
                         stash[key] = signal;
         }
 
@@ -474,6 +482,10 @@ int uprobe_read(struct pt_regs *ctx) {
         if (!IS_MAJOR) { // skip the rest of the program if not major step
                 return 0;
         } else {
+                if (NOF_SIGNALS_READ > MAX_NOF_SIGNALS) {
+                        DEBUG_P("\tERR, too many signals to read");
+                        return -1;
+                }
                 DEBUG_P("READ_INPUT, time: %d", time - 1);
                 __u64 cookie = bpf_get_attach_cookie(ctx);
                 DEBUG_P("Cookie: %d", cookie);
@@ -543,7 +555,7 @@ int uprobe_write(struct pt_regs *ctx) {
         if (!IS_MAJOR) { // skip the rest of the program if not major step
                 return 0;
         } else {
-                if (NOF_SIGNALS_WRITTEN > 8) { // hardcoded
+                if (NOF_SIGNALS_WRITTEN > MAX_NOF_SIGNALS) {
                         DEBUG_P("\tERR, too many signals to write");
                         return -1;
                 }
@@ -583,10 +595,16 @@ int uprobe_write(struct pt_regs *ctx) {
                 };
 
                 // extract signals within the current group
-                __u32 group_size = (__u32)cookie & 0b1111;
+                __u32 group_size = ((__u32)cookie & 0b1111) + 1;
                 DEBUG_P("\tgroup %d, there are %d signals to write", group_base, group_size);
 #pragma unroll
-                for (int i = 0; i < 8; ++i) { // hardcoded
+                for (int i = 0; i < 8; ++i) {
+                        if (i >= group_size)
+                                break;
+                        write_signal(i + group_base, &wl_ctx);
+                }
+#pragma unroll
+                for (int i = 8; i < MAX_NOF_SIGNALS; ++i) {
                         if (i >= group_size)
                                 break;
                         write_signal(i + group_base, &wl_ctx);
