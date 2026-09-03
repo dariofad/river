@@ -311,74 +311,6 @@ func Start(
 		return
 	}
 
-	// Link all uprobes
-	var offset uint64
-	var group_base int
-	// 1) reads
-	if nof_signals_read > 0 {
-		for _, group := range config.Reads {
-			cookie := uint32(group_base<<4 + len(group.Signals))
-			log.Printf("Read group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
-			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
-			if err != nil {
-				log.Printf("Error converting uprobe offset: %s", err)
-				errCh <- err
-				wg.Done()
-				return
-			}
-			uprobe_r, err := modelExecutable.Uprobe(
-				group.Symbol,
-				probeObjs.UprobeRead,
-				&link.UprobeOptions{Offset: offset, Cookie: uint64(cookie)},
-			)
-			if err != nil {
-				log.Printf("Error setting the uprobe_read: %v", err)
-				errCh <- err
-				wg.Done()
-				return
-			} else {
-				log.Print("Uprobe_read linked")
-			}
-			defer uprobe_r.Close()
-			// update next group_base start position
-			group_base += len(group.Signals)
-		}
-	}
-	// 2) writes
-	if nof_signals_written > 0 {
-		for _, group := range config.Writes {
-			cookie := uint32(group_base<<4 + len(group.Signals))
-			log.Printf("Written group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
-			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
-			if err != nil {
-				log.Printf("Error converting uprobe offset: %s", err)
-				errCh <- err
-				wg.Done()
-				return
-			}
-			uprobe_w, err := modelExecutable.Uprobe(
-				group.Symbol,
-				probeObjs.UprobeWrite,
-				&link.UprobeOptions{Offset: offset, Cookie: uint64(cookie)},
-			)
-			if err != nil {
-				log.Printf("Error setting the uprobe_write: %v", err)
-				errCh <- err
-				wg.Done()
-				return
-			} else {
-				log.Print("Uprobe_write linked")
-			}
-			defer uprobe_w.Close()
-			group_base += len(group.Signals)
-		}
-	}
-
-	// cyclic timer
-	var uprobe_timer link.Link
-	uprobe_timer, err = modelExecutable.Uprobe(config.TimerSymbol, probeObjs.UprobeTimer, nil)
-	defer uprobe_timer.Close()
-
 	// Start preparing the simulation commands
 	ctx, cancelSimulation := context.WithCancel(context.Background())
 	defer cancelSimulation()
@@ -413,6 +345,87 @@ func Start(
 			return
 		}
 	}
+
+	// Attach the uprobes only to this target while it is still stopped. The
+	// address map above contains addresses relocated for this specific process,
+	// so allowing another instance of the executable to trigger these programs
+	// would make the programs dereference addresses from the wrong address space.
+	targetPID := binCmd.Process.Pid
+	var offset uint64
+	var group_base int
+	if nof_signals_read > 0 {
+		for _, group := range config.Reads {
+			cookie := uint32(group_base<<4 + len(group.Signals))
+			log.Printf("Read group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
+			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
+			if err != nil {
+				_ = abortStopped(binCmd)
+				log.Printf("Error converting uprobe offset: %s", err)
+				errCh <- err
+				wg.Done()
+				return
+			}
+			uprobe_r, err := modelExecutable.Uprobe(
+				group.Symbol,
+				probeObjs.UprobeRead,
+				&link.UprobeOptions{Offset: offset, Cookie: uint64(cookie), PID: targetPID},
+			)
+			if err != nil {
+				_ = abortStopped(binCmd)
+				log.Printf("Error setting the uprobe_read: %v", err)
+				errCh <- err
+				wg.Done()
+				return
+			}
+			log.Print("Uprobe_read linked")
+			defer uprobe_r.Close()
+			group_base += len(group.Signals)
+		}
+	}
+	if nof_signals_written > 0 {
+		for _, group := range config.Writes {
+			cookie := uint32(group_base<<4 + len(group.Signals))
+			log.Printf("Written group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
+			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
+			if err != nil {
+				_ = abortStopped(binCmd)
+				log.Printf("Error converting uprobe offset: %s", err)
+				errCh <- err
+				wg.Done()
+				return
+			}
+			uprobe_w, err := modelExecutable.Uprobe(
+				group.Symbol,
+				probeObjs.UprobeWrite,
+				&link.UprobeOptions{Offset: offset, Cookie: uint64(cookie), PID: targetPID},
+			)
+			if err != nil {
+				_ = abortStopped(binCmd)
+				log.Printf("Error setting the uprobe_write: %v", err)
+				errCh <- err
+				wg.Done()
+				return
+			}
+			log.Print("Uprobe_write linked")
+			defer uprobe_w.Close()
+			group_base += len(group.Signals)
+		}
+	}
+
+	uprobe_timer, err := modelExecutable.Uprobe(
+		config.TimerSymbol,
+		probeObjs.UprobeTimer,
+		&link.UprobeOptions{PID: targetPID},
+	)
+	if err != nil {
+		_ = abortStopped(binCmd)
+		log.Printf("Error setting the uprobe_timer: %v", err)
+		errCh <- err
+		wg.Done()
+		return
+	}
+	defer uprobe_timer.Close()
+
 	if err := detachStopped(binCmd); err != nil {
 		_ = abortStopped(binCmd)
 		log.Printf("Cannot detach from target after address setup: %s", err)
