@@ -9,7 +9,9 @@ import (
 )
 
 // startStopped starts cmd under ptrace and returns only after Linux has stopped
-// the child following exec. No model instruction has run at that point.
+// the child following exec. No model instruction has run at that point. The
+// caller must lock its goroutine to an OS thread before calling startStopped and
+// keep it locked through the corresponding detachStopped call.
 func startStopped(cmd *exec.Cmd) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Ptrace: true}
 	if err := cmd.Start(); err != nil {

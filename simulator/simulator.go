@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"sync"
 	"syscall"
@@ -322,6 +323,13 @@ func Start(
 	// Start the child under ptrace. Linux stops it immediately after exec, so
 	// its ASLR mapping is visible before any model instruction can run.
 	log.Print("Starting simulation")
+	runtime.LockOSThread()
+	ptraceThreadLocked := true
+	defer func() {
+		if ptraceThreadLocked {
+			runtime.UnlockOSThread()
+		}
+	}()
 	if err := startStopped(binCmd); err != nil {
 		log.Printf("Failed to start simulation command: %s", err)
 		errCh <- err
@@ -426,10 +434,13 @@ func Start(
 	}
 	defer uprobe_timer.Close()
 
-	if err := detachStopped(binCmd); err != nil {
+	detachErr := detachStopped(binCmd)
+	ptraceThreadLocked = false
+	runtime.UnlockOSThread()
+	if detachErr != nil {
 		_ = abortStopped(binCmd)
-		log.Printf("Cannot detach from target after address setup: %s", err)
-		errCh <- err
+		log.Printf("Cannot detach from target after address setup: %s", detachErr)
+		errCh <- detachErr
 		wg.Done()
 		return
 	}
