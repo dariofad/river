@@ -447,7 +447,7 @@ static inline int read_signals(__u64 cookie) {
                 }
                 // read the signal from user space
                 __u64 signal = 0;
-                if (bpf_probe_read_user(&signal, sizeof(signal), (void *)(*address)) == 0) {
+                if (bpf_probe_read_user(&signal, sizeof(signal), (void *)*address) == 0) {
                         DEBUG_P("\tsign_key %d from user space: %llu (address: %llu)", key, signal,
                                 *address);
                 } else {
@@ -474,8 +474,7 @@ int uprobe_read(struct pt_regs *ctx) {
         if (!IS_MAJOR) { // skip the rest of the program if not major step
                 return 0;
         } else {
-                __u32 actual_time = time - 1;
-                DEBUG_P("READ_INPUT, time: %d", actual_time);
+                DEBUG_P("READ_INPUT, time: %d", time - 1);
                 __u64 cookie = bpf_get_attach_cookie(ctx);
                 DEBUG_P("Cookie: %d", cookie);
                 return read_signals(cookie);
@@ -516,7 +515,7 @@ static long write_signal(u64 index, void *_ctx) {
 
         // read the signal from user space
         __u64 sign = 0;
-        if (bpf_probe_read_user(&sign, sizeof(sign), (void *)(*address)) == 0) {
+        if (bpf_probe_read_user(&sign, sizeof(sign), (void *)*address) == 0) {
                 DEBUG_P("\ttime key %d from user space: %llu", skey, sign);
         } else {
                 DEBUG_P("\tERR, failed to read time key %d from user space", skey);
@@ -527,7 +526,7 @@ static long write_signal(u64 index, void *_ctx) {
         sign = ieee754_add(sign, *value);
 
         // overwrite signal in user space
-        long err = bpf_probe_write_user((void *)(*address), &sign, 8);
+        long err = bpf_probe_write_user((void *)*address, &sign, 8);
         if (err != 0) {
                 DEBUG_P("\tERR, failed to overwrite signal %k in user space, err: %ld", skey, err);
                 return 1;
@@ -550,6 +549,8 @@ int uprobe_write(struct pt_regs *ctx) {
                 }
 
                 __u32 actual_time = time - 1;
+                __u64 cookie = bpf_get_attach_cookie(ctx);
+                __u32 group_base = (__u32)cookie >> 4;
 
                 // check runtime state injection available (STATE DRAIN)
                 // todo: apply multiple state value at the same time
@@ -582,8 +583,6 @@ int uprobe_write(struct pt_regs *ctx) {
                 };
 
                 // extract signals within the current group
-                __u64 cookie     = bpf_get_attach_cookie(ctx);
-                __u32 group_base = (__u32)cookie >> 4;
                 __u32 group_size = (__u32)cookie & 0b1111;
                 DEBUG_P("\tgroup %d, there are %d signals to write", group_base, group_size);
 #pragma unroll

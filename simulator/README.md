@@ -1,76 +1,121 @@
-# Quickstart
+# Simulator configuration
 
-Copy the demo configuration files to this folder with `cp
-   demos/*config.json .`, then use GDB to obtain the correct addresses
-   and offset of any signal/internal state variable. Follow these
-   generic steps:
-1. Disable ASLR (`make aslr_off` from the parent folder)
-2. Go to the `model` folder
-3. Run `gdb model`, then follow the next steps
-4. `b main`
-5. `r`
-6. `p &signal`, the value you get is `ADDR_SIGNAL`
-7. or `info line source_file:line_number`, to check the value of offsets
-8. `q`, to quit GDB
+The simulator reads `simulator/config.json`. Demo templates live in
+`simulator/demos/`; copy the chosen template to `simulator/config.json` before
+starting a run.
 
-## How the templates have been generated?
-
-In general, `objdump -t` (with the `--demangle` option) can be used to
-retrieve the symbol associated with the model `::step()` function.
-For the addresses, see the following.
-
-### Model 1: EgoCar
-
-Input:
 ```bash
-p &ego.egoCar_Y.d_rel
-offset: info line egoCar.cpp:2301
-```
-Output:
-```bash
-p &ego.egoCar_Y.d_rel  
-p &ego.egoCar_Y.a_ego
-p &ego.egoCar_Y.v_ego
-p &ego.egoCar_U.d_lead
-p &ego.egoCar_X.Integrator1_CSTATE
-offset: info line egoCar.cpp:2551
- ```
-
-### Model 2: Signal Addition
-
-Input:
-```bash
-p &Simulink2Code_Obj.Simulink2Code_U.x
-p &Simulink2Code_Obj.Simulink2Code_U.y
-offset 1: info line main.cpp:61
-offset 2: info line main.cpp:62
-```
-Output:
-```bash
-p &Simulink2Code_Obj.Simulink2Code_Y.result
-p &Simulink2Code_Obj.model_offset
-offset: offset 2: info line main.cpp:64
-```
-State:
-```bash
-p &Simulink2Code_Obj.model_offset
+cp simulator/demos/M2_C2_config.json simulator/config.json
 ```
 
-### Model 3: Abstract Fuel Control
+The templates describe the binaries available in the companion `sim2cpp`
+repository. Update `MODEL_PATH`, symbols, offsets, and addresses whenever you
+use a different build of a model.
 
-Input:
-```bash
-p &model.AbstractFuelControl_M1_U.PedalAngle
-p &model.AbstractFuelControl_M1_U.EngineSpeed 
-offset: 0, the beginning of the ::step() function
+## Address model and ASLR
+
+`ADDR` values are **ELF virtual addresses**, not addresses from a running
+process. They are stable for one particular model binary and are written as
+hexadecimal strings without a `0x` prefix, for example `"4048"`.
+
+ASLR must remain enabled. At startup River launches the model in a temporary
+post-`exec` ptrace stop, reads `/proc/<pid>/maps`, calculates the load bias,
+and writes the corresponding runtime addresses to the eBPF map. It then
+detaches from the model before normal simulation begins.
+
+Do not use an address copied from a running process, such as
+`0x5555...` or `0xaaaa...`; that value includes a particular run's ASLR bias
+and will be wrong for the next run. State perturbation `ADDR` values follow the
+same rule.
+
+## JSON format
+
+```json
+{
+  "MODEL_PATH": "/absolute/path/to/model",
+  "TIMER_SYMBOL": "mangled_or_exported_timer_symbol",
+  "MINOR_TO_MAJOR_RATIO": "1",
+  "NOF_CYCLES": "20",
+  "WRITES": [
+    {
+      "SYMBOL": "hook_symbol",
+      "OFFSET": "74",
+      "SIGNALS": [
+        {"NAME": "INPUT", "TYPE": "float64", "ADDR": "4048"}
+      ]
+    }
+  ],
+  "READS": [
+    {
+      "SYMBOL": "hook_symbol",
+      "OFFSET": "79",
+      "SIGNALS": [
+        {"NAME": "OUTPUT", "TYPE": "float64", "ADDR": "4058"}
+      ]
+    }
+  ]
+}
 ```
-Output:
-```bash
-p &model.AbstractFuelControl_M1_Y.AF
-p &model.AbstractFuelControl_M1_Y.controller_mode
-offset: info line AbstractFuelControl_M1.cpp:1065
- ```
-State:
-```bash
-p &AbstractFuelControl_M1::AbstractFuelControl_M1_P.Baseopeningangle_Value
-```
+
+Each `READS` or `WRITES` item is an independently attached uprobe group. Its
+`OFFSET` is a decimal byte offset relative to that group's `SYMBOL`; it is not
+an absolute ELF address. A group can contain at most 15 signals because its
+size is encoded in the eBPF attach cookie.
+
+Place write hooks before the model consumes the configured inputs and read
+hooks after it has produced the configured outputs. The last read group flushes
+each sampled record and drives the configured-cycle termination condition.
+
+## Deriving a configuration for a local binary
+
+1. Identify the model entry point and its ELF address:
+
+   ```bash
+   nm -C --defined-only /path/to/model | rg '::step|rt_OneStep'
+   ```
+
+2. Obtain static addresses for global/model fields. GDB can inspect the ELF
+   without running it:
+
+   ```bash
+   gdb -q /path/to/model
+   (gdb) p/x &Simulink2Code_Obj.Simulink2Code_U.x
+   ```
+
+   Record the result without `0x` as `ADDR`. Confirm it belongs to a loadable
+   ELF segment with `readelf -lW /path/to/model`.
+
+3. Disassemble the hook function and choose an instruction boundary:
+
+   ```bash
+   objdump -d -C --disassemble='rt_OneStep()' /path/to/model
+   ```
+
+   Subtract the symbol's start address from the selected instruction address;
+   put that decimal difference in `OFFSET`. Do not use an offset in the middle
+   of an x86 instruction. Source-line information is useful for locating the
+   relevant code, but validate the final location in the disassembly:
+
+   ```bash
+   addr2line -e /path/to/model -f -C 0x1238
+   ```
+
+4. Validate the JSON before running a simulation:
+
+   ```bash
+   jq empty simulator/config.json
+   ```
+
+## Existing demo probe sites
+
+The checked-in templates have been aligned with the binaries under
+`/home/matt/cps/sim2cpp`:
+
+| Model | Write offset | Read offset |
+| --- | ---: | ---: |
+| DualACC (M1) | 308 | 4825 |
+| ToyModel (M2) | 74 | 74 and 79 |
+| Abstract Fuel Control (M3) | 0 | 4479 |
+
+These offsets and all `ADDR` values are tied to those binaries. Recalculate
+them after recompiling a model or switching to another executable.

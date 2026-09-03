@@ -138,6 +138,23 @@ func Start(
 	}
 	var config my_types.Configuration
 	err = json.Unmarshal(rawSimData, &config)
+	if err != nil {
+		log.Printf("Error parsing the configuration: %s", err)
+		errCh <- err
+		wg.Done()
+		return
+	}
+
+	// Configuration addresses are static ELF virtual addresses. Validate them
+	// before starting the model; they will be translated while the child is
+	// stopped immediately after exec.
+	relocation, err := configureRelocation(config)
+	if err != nil {
+		log.Printf("Cannot configure ASLR-safe target addresses: %v", err)
+		errCh <- err
+		wg.Done()
+		return
+	}
 
 	// Set cycles in ebpf
 	err = setCycles(spec, config)
@@ -281,29 +298,10 @@ func Start(
 		}()
 		defer inner.Close()
 	}
-	// setup signal addresses and types
+	// Set the address map capacity now. Runtime addresses are installed after
+	// the child has exec'd and is stopped by ptrace below.
 	mAddressSpec := spec.Maps["address_map"]
 	mAddressSpec.MaxEntries = paddedEntries(nof_signals_read + nof_signals_written)
-	var allSignals []my_types.Signal
-	allSignals = append(allSignals, cReads...)
-	allSignals = append(allSignals, cWrites...)
-	for p, signal := range allSignals {
-		// address
-		signalAddr, err := strconv.ParseUint(signal.Addr, 16, 64)
-		if err != nil {
-			log.Printf("Error converting signal address: %s", err)
-			errCh <- err
-			wg.Done()
-			return
-		}
-		err = probeObjs.AddressMap.Update(uint32(p), signalAddr, 0)
-		if err != nil {
-			log.Printf("Cannot perform the update to addressMap: %v", err)
-			errCh <- err
-			wg.Done()
-			return
-		}
-	}
 
 	modelExecutable, err := link.OpenExecutable(config.ModelPath)
 	if err != nil {
@@ -348,10 +346,9 @@ func Start(
 	}
 	// 2) writes
 	if nof_signals_written > 0 {
-		for p, group := range config.Writes {
-			p = p + int(nof_signals_read)
-			cookie := uint32(p<<4 + len(group.Signals))
-			log.Printf("Written group %d, %d signals, cookie: %d", p, len(group.Signals), cookie)
+		for _, group := range config.Writes {
+			cookie := uint32(group_base<<4 + len(group.Signals))
+			log.Printf("Written group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
 			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
 			if err != nil {
 				log.Printf("Error converting uprobe offset: %s", err)
@@ -373,6 +370,7 @@ func Start(
 				log.Print("Uprobe_write linked")
 			}
 			defer uprobe_w.Close()
+			group_base += len(group.Signals)
 		}
 	}
 
@@ -389,17 +387,41 @@ func Start(
 		binCmd.Stdout = os.Stdout
 	}
 	binCmd.Stderr = os.Stderr
-	// Start the command
+	// Start the child under ptrace. Linux stops it immediately after exec, so
+	// its ASLR mapping is visible before any model instruction can run.
 	log.Print("Starting simulation")
-	// Start measuring simulation time
-	simulationStartTime := time.Now()
-
-	if err := binCmd.Start(); err != nil {
+	if err := startStopped(binCmd); err != nil {
 		log.Printf("Failed to start simulation command: %s", err)
 		errCh <- err
 		wg.Done()
 		return
 	}
+	runtimeAddresses, loadBias, err := relocation.runtimeAddresses(binCmd.Process.Pid)
+	if err != nil {
+		_ = abortStopped(binCmd)
+		log.Printf("Cannot resolve target runtime addresses: %s", err)
+		errCh <- err
+		wg.Done()
+		return
+	}
+	for p, runtimeAddress := range runtimeAddresses {
+		if err = probeObjs.AddressMap.Update(uint32(p), runtimeAddress, 0); err != nil {
+			_ = abortStopped(binCmd)
+			log.Printf("Cannot update runtime address for signal %d: %v", p, err)
+			errCh <- err
+			wg.Done()
+			return
+		}
+	}
+	if err := detachStopped(binCmd); err != nil {
+		_ = abortStopped(binCmd)
+		log.Printf("Cannot detach from target after address setup: %s", err)
+		errCh <- err
+		wg.Done()
+		return
+	}
+	// Start measuring only once the untraced model can execute.
+	simulationStartTime := time.Now()
 
 	// wait for non-interactive simulations to terminate
 	if simulationMode == my_types.Falsification {
@@ -488,7 +510,7 @@ func Start(
 		}()
 
 		// apply state perturbation
-		go func(ctx context.Context, statePertCh <-chan []my_types.StateRecord, probeObjs probeObjects, errCh chan error) {
+		go func(ctx context.Context, statePertCh <-chan []my_types.StateRecord, probeObjs probeObjects, errCh chan error, loadBias uint64) {
 
 			for {
 				select {
@@ -506,9 +528,14 @@ func Start(
 					}
 					defer tempFile.Close()
 					for _, r := range perturbation {
+						runtimeAddress, ok := addUint64(r.Addr, loadBias)
+						if !ok {
+							log.Printf("State perturbation address %#x overflows after relocation", r.Addr)
+							break
+						}
 						binary.Write(tempFile, binary.LittleEndian, r.Time)
 						binary.Write(tempFile, binary.LittleEndian, r.ValueSize)
-						binary.Write(tempFile, binary.LittleEndian, r.Addr)
+						binary.Write(tempFile, binary.LittleEndian, runtimeAddress)
 						binary.Write(tempFile, binary.LittleEndian, r.Value)
 					}
 
@@ -532,7 +559,7 @@ func Start(
 				}
 
 			}
-		}(ctx, statePertCh, probeObjs, errChi)
+		}(ctx, statePertCh, probeObjs, errChi, loadBias)
 
 		// monitor simulation
 		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read)
