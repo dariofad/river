@@ -363,7 +363,7 @@ func Start(
 	var group_base int
 	if nof_signals_read > 0 {
 		for _, group := range config.Reads {
-			cookie := uint32(group_base<<4 + len(group.Signals))
+			cookie := uprobeCookie(group_base, len(group.Signals))
 			log.Printf("Read group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
 			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
 			if err != nil {
@@ -376,7 +376,7 @@ func Start(
 			uprobe_r, err := modelExecutable.Uprobe(
 				group.Symbol,
 				probeObjs.UprobeRead,
-				&link.UprobeOptions{Offset: offset, Cookie: uint64(cookie), PID: targetPID},
+				&link.UprobeOptions{Offset: offset, Cookie: cookie, PID: targetPID},
 			)
 			if err != nil {
 				_ = abortStopped(binCmd)
@@ -392,7 +392,7 @@ func Start(
 	}
 	if nof_signals_written > 0 {
 		for _, group := range config.Writes {
-			cookie := uint32(group_base<<4 + len(group.Signals))
+			cookie := uprobeCookie(group_base, len(group.Signals))
 			log.Printf("Written group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
 			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
 			if err != nil {
@@ -405,7 +405,7 @@ func Start(
 			uprobe_w, err := modelExecutable.Uprobe(
 				group.Symbol,
 				probeObjs.UprobeWrite,
-				&link.UprobeOptions{Offset: offset, Cookie: uint64(cookie), PID: targetPID},
+				&link.UprobeOptions{Offset: offset, Cookie: cookie, PID: targetPID},
 			)
 			if err != nil {
 				_ = abortStopped(binCmd)

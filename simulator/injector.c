@@ -11,12 +11,12 @@
 
 // todo: turn this program into a daemon to reduce latency
 
-#define MAX_NOF_WISIGNALS 8
+#define MAX_NOF_SIGNALS 16
 
 struct model_record {
         __u32 time;
         __u32 filler;
-        double values[MAX_NOF_WISIGNALS];
+        double values[MAX_NOF_SIGNALS];
 };
 
 int main(int argc, char **argv) {
@@ -35,6 +35,12 @@ int main(int argc, char **argv) {
         }
         // get nof_signals
         int nof_signals = atoi(argv[1]);
+        if (nof_signals < 0 || nof_signals > MAX_NOF_SIGNALS) {
+                fprintf(stderr, "Invalid number of signals %d; expected 0-%d\n", nof_signals,
+                        MAX_NOF_SIGNALS);
+                EXIT_STATUS = 1;
+                goto exitRoutine;
+        }
         if (VERBOSE) {
                 printf("Nof signals to be injected: %d\n", nof_signals);
         }
@@ -62,11 +68,10 @@ int main(int argc, char **argv) {
         }
 
         // read perturbations and inject
-        uint record_size      = sizeof(uint) + sizeof(uint) + MAX_NOF_WISIGNALS * sizeof(double);
+        uint record_size      = sizeof(struct model_record);
         uint record_real_size = sizeof(uint) + sizeof(uint) + nof_signals * sizeof(double);
-        const double zeros[MAX_NOF_WISIGNALS] = {0};
         struct model_record rec;
-        memcpy(&rec.values, &zeros, MAX_NOF_WISIGNALS * sizeof(double));
+        memset(&rec, 0, sizeof(rec));
         while (read(input_fd, &rec, record_real_size) == record_real_size) {
                 // inject
                 void *p = user_ring_buffer__reserve(rb, record_size);
@@ -85,7 +90,7 @@ int main(int argc, char **argv) {
                 }
                 // zero signal memory
                 rec.time = 0;
-                memcpy(&rec, zeros, 8 * MAX_NOF_WISIGNALS);
+                memset(&rec, 0, sizeof(rec));
         }
 
 exitRoutine:
