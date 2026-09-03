@@ -46,12 +46,6 @@ func RemoveMemlock() {
 	}
 }
 
-// Utility, based on the standard 4096-byte page
-func paddedEntries(entries uint32) uint32 {
-
-	return uint32(((entries + 4096 - 1) / 4096) * 4096)
-}
-
 func setCycles(spec *ebpf.CollectionSpec, config my_types.Configuration) error {
 
 	// set ratio
@@ -193,6 +187,16 @@ func Start(
 		return
 	}
 
+	// Map specifications must be finalized before LoadAndAssign: that call
+	// creates the kernel maps, and changing a spec afterwards cannot resize an
+	// existing map.
+	if err := configureSignalMapSizes(spec, nof_signals_read+nof_signals_written); err != nil {
+		log.Printf("Cannot configure signal map sizes: %v", err)
+		errCh <- err
+		wg.Done()
+		return
+	}
+
 	// create the probeObjects
 	probeObjs := probeObjects{}
 	// Load eBPF objects (maps + programs) into the kernel
@@ -222,9 +226,8 @@ func Start(
 	}
 	log.Print("Input trajectory extracted successfully")
 
-	// get trajectory map
+	// Get the trajectory map and use its spec as the template for inner maps.
 	trajectoryMapSpec := spec.Maps["trajectory_map"]
-	trajectoryMapSpec.MaxEntries = paddedEntries(nof_signals_read + nof_signals_written)
 	// create outer map
 	trajectoryMap := probeObjs.TrajectoryMap
 	if err != nil {
@@ -299,11 +302,6 @@ func Start(
 		}()
 		defer inner.Close()
 	}
-	// Set the address map capacity now. Runtime addresses are installed after
-	// the child has exec'd and is stopped by ptrace below.
-	mAddressSpec := spec.Maps["address_map"]
-	mAddressSpec.MaxEntries = paddedEntries(nof_signals_read + nof_signals_written)
-
 	modelExecutable, err := link.OpenExecutable(config.ModelPath)
 	if err != nil {
 		log.Printf("Error opening model executable: %s", err)
