@@ -349,6 +349,7 @@ static long get_injected_stateval_from_usp(struct bpf_dynptr *dynptr, __u32 plac
 static inline int flush() {
 
         DEBUG_P("Start flushing...");
+        bool simulation_complete = time >= MAX_CYCLES;
         // flush the stash to the cache
         struct model_record *r;
         // reserve memory in the ring buffer
@@ -356,6 +357,10 @@ static inline int flush() {
                                 sizeof(struct model_record) + NOF_SIGNALS_READ * sizeof(__u64), 0);
         if (r == NULL) {
                 DEBUG_P("\tERR, failed to reserve rb memory");
+                if (simulation_complete) {
+                        DEBUG_P("\tSIGKILL SENT TO PROCESS AFTER RB RESERVE FAILURE");
+                        bpf_send_signal(SIGKILL);
+                }
                 return -1;
         }
         r->time   = time - 1; // actual time
@@ -391,7 +396,7 @@ static inline int flush() {
         stash[15] = 0;
 
         // send SIGKILL after last flush
-        if (time == MAX_CYCLES) {
+        if (simulation_complete) {
                 DEBUG_P("\tLOGGED %d RECORDS", log_counter);
                 DEBUG_P("\tSIGKILL SENT TO PROCESS");
                 bpf_send_signal(SIGKILL);

@@ -462,14 +462,27 @@ func Start(
 			log.Print("Simulation completed successfully")
 		}
 	} else {
-		// don't wait until it terminates
 		log.Printf("Simulation is running...")
+	}
+
+	var simulationDone <-chan error
+	if simulationMode != my_types.Falsification {
+		done := make(chan error, 1)
+		simulationDone = done
+		go func() {
+			waitErr := binCmd.Wait()
+			if cmdWasSigkilled(waitErr) {
+				waitErr = nil
+			}
+			done <- waitErr
+			close(done)
+		}()
 	}
 
 	switch simulationMode {
 	case my_types.Monitoring:
 		ctx := context.Background()
-		if err := monitorSimulation(ctx, probeObjs, nof_signals_read); err != nil {
+		if err := monitorSimulation(ctx, probeObjs, nof_signals_read, simulationDone, cancelSimulation); err != nil {
 			errCh <- err
 			wg.Done()
 			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
@@ -586,15 +599,14 @@ func Start(
 		}(ctx, statePertCh, probeObjs, errChi, loadBias)
 
 		// monitor simulation
-		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read)
+		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read, simulationDone, cancelSimulation)
 
 		// wait for simulation to terminate
 		wgm.Wait()
 		// return the error if occured, otherwise send simulation task terminated
-		select {
-		case err := <-errCh:
+		if err := <-errChm; err != nil {
 			errCh <- err
-		default:
+		} else {
 			wg.Done()
 		}
 		stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
@@ -680,15 +692,14 @@ func Start(
 			}
 		}(ctx, pertCh, probeObjs, errChi, nof_signals_written)
 		// monitor simulation
-		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read)
+		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read, simulationDone, cancelSimulation)
 
 		// wait for simulation to terminate
 		wgm.Wait()
 		// return the error if occured, otherwise send simulation task terminated
-		select {
-		case err := <-errCh:
+		if err := <-errChm; err != nil {
 			errCh <- err
-		default:
+		} else {
 			wg.Done()
 		}
 
@@ -827,14 +838,14 @@ func extractPerturbationRecords(data map[string]interface{}, nof_signals_written
 	return pertRecords, nil
 }
 
-func asyncMonitorSimulation(wg *sync.WaitGroup, errCh chan<- error, ctx context.Context, probeObjs probeObjects, nof_signals_read uint32) {
+func asyncMonitorSimulation(wg *sync.WaitGroup, errCh chan<- error, ctx context.Context, probeObjs probeObjects, nof_signals_read uint32, simulationDone <-chan error, stopSimulation context.CancelFunc) {
 
 	defer wg.Done()
-	err := monitorSimulation(ctx, probeObjs, nof_signals_read)
+	err := monitorSimulation(ctx, probeObjs, nof_signals_read, simulationDone, stopSimulation)
 	errCh <- err
 }
 
-func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_read uint32) error {
+func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_read uint32, simulationDone <-chan error, stopSimulation context.CancelFunc) error {
 
 	// Create the Redis client
 	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
@@ -855,7 +866,10 @@ func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_
 	// Read events from the ring buffer and write them to Redis
 	var records []my_types.ModelRecord
 	var writtenRecords uint32 = 0
+	var completionErr error
 	simulationKey := "simulation:" + simulationId
+
+monitorLoop:
 	for {
 		rbReader.SetDeadline(time.Now().Add(50 * time.Millisecond))
 		record, err := rbReader.Read()
@@ -877,9 +891,29 @@ func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_
 				Values: _vals,
 			}
 			records = append(records, oRec)
-		} else if writtenRecords+uint32(len(records)) == CYCLES {
-			// Terminate
-			break
+			if CYCLES > 0 && oRec.Time >= CYCLES-1 {
+				// The expected final cycle reached userspace. Ensure the model exits
+				// even if bpf_send_signal() failed in the probe.
+				stopSimulation()
+			}
+		} else {
+			if !errors.Is(err, os.ErrDeadlineExceeded) {
+				return fmt.Errorf("read simulation ring buffer: %w", err)
+			}
+			receivedRecords := writtenRecords + uint32(len(records))
+			if receivedRecords >= CYCLES {
+				break
+			}
+			select {
+			case waitErr := <-simulationDone:
+				if waitErr != nil {
+					completionErr = fmt.Errorf("simulation exited before monitoring completed: %w", waitErr)
+				} else {
+					completionErr = fmt.Errorf("simulation produced %d of %d expected records", receivedRecords, CYCLES)
+				}
+				break monitorLoop
+			default:
+			}
 		}
 		if len(records) >= 50 {
 			if err = writeToRedis(ctx, redisClient, simulationKey, records); err != nil {
@@ -900,7 +934,7 @@ func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_
 		records = []my_types.ModelRecord{}
 	}
 
-	return nil
+	return completionErr
 }
 
 // Writes a slice of records to Redis
