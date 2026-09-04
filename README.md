@@ -44,6 +44,8 @@ is also possible to interact with the server using a Matlab session.
 ## Build and run the server
 
 - Create the redis container with `make redis` (only the first time)
+- Generate an editable model manifest with `make manifest MODEL=/path/to/model MANIFEST=model.river.yaml`
+- Refine and compile it to the simulator's existing JSON configuration as described in `simulator/README.md`
 - Build and run the server with `make`
 
 You can get additional feedback checking the output of the eBPF probes at `/sys/kernel/tracing/trace_pipe`.
