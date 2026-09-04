@@ -6,6 +6,8 @@ require (
 	github.com/cilium/ebpf v0.19.0
 	github.com/redis/go-redis/v9 v9.14.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
+	golang.org/x/arch v0.20.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

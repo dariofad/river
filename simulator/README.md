@@ -12,6 +12,68 @@ The templates describe the binaries available in the companion `sim2cpp`
 repository. Update `MODEL_PATH`, symbols, offsets, and addresses whenever you
 use a different build of a model.
 
+For a new unstripped C++ model, `river-manifest` can discover the model and
+produce an editable YAML manifest:
+
+```bash
+go run ./cmd/river-manifest generate \
+  --binary /path/to/model \
+  --output model.river.yaml
+```
+
+The generated manifest selects supported inputs for writing at `step.entry`,
+then selects supported inputs and outputs for reading at `step.post_outputs`
+when DWARF/source mapping identifies the first instruction after the last
+output assignment. If that proof is unavailable it conservatively uses
+`step.return` and emits a warning. States are available but not selected by
+default. Each model owns its own
+`available_hooks` and `hooks`: hook IDs are therefore model-local. Review
+`cycles`, `sample_every`, `timer_model`, data names, hook selections, and the
+offset on each available hook. Move an available hook's offset to the exact
+instruction where the unchanged simulator should inject or sample data.
+
+For generated continuous models, `sample_every` is inferred from the actual
+number of `step()` calls in the generated fixed-step solver source (rather
+than assuming that an ODE method's name equals its stage count). Discrete,
+implicit, variable-step, or unproven solver code uses `1` and emits a warning.
+
+```yaml
+models:
+  - name: ToyModel
+    available_hooks:
+      - id: step.entry
+        function: step
+        phase: entry
+        offset: 0
+      - id: step.post_outputs
+        function: step
+        phase: post_outputs
+        offset: 55
+    hooks:
+      - id: step.entry
+        action: write
+        data: [ToyModel.ToyModel_U.x]
+      - id: step.post_outputs
+        action: read
+        data: [ToyModel.ToyModel_U.x, ToyModel.ToyModel_Y.y]
+```
+
+Compile the refined manifest against the target binary:
+
+```bash
+go run ./cmd/river-manifest compile \
+  --manifest model.river.yaml \
+  --binary /path/to/model \
+  --output simulator/config.json
+```
+
+Compilation verifies the binary fingerprint, symbols, static model instances,
+data types, addresses, and instruction boundaries before atomically writing
+the existing JSON format. Every selected `read` or `write` hook becomes one
+JSON group. Selections may include supported `float64` inputs, outputs, and
+states (including static parameters). The legacy runtime supports at most 16
+signals in each direction.
+
 ## Address model and ASLR
 
 `ADDR` values are **ELF virtual addresses**, not addresses from a running
@@ -67,7 +129,7 @@ Place write hooks before the model consumes the configured inputs and read
 hooks after it has produced the configured outputs. The last read group flushes
 each sampled record and drives the configured-cycle termination condition.
 
-## Deriving a configuration for a local binary
+## Deriving or refining probe sites manually
 
 1. Identify the model entry point and its ELF address:
 

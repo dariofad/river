@@ -1,4 +1,4 @@
-.PHONY: all build run generate vmlinux redis start_redis stop_redis bench check-env clean
+.PHONY: all bench build build_bench check-env clean generate generate_bench manifest redis run start_redis stop_redis vmlinux
 
 EBPF_PROBE = probe
 GO_MODULE = river
@@ -36,6 +36,11 @@ build: generate pert_injector state_pert_injector
 	@CGO_ENABLED=0 GOARCH=$(ARCH) go build
 build_bench: generate_bench pert_injector state_pert_injector
 	@CGO_ENABLED=0 GOARCH=$(ARCH) go build
+
+manifest:
+	@test -n "$(MODEL)" || (echo "MODEL=/path/to/model is required"; exit 2)
+	@test -n "$(MANIFEST)" || (echo "MANIFEST=/path/to/model.river.yaml is required"; exit 2)
+	@go run ./cmd/river-manifest generate --binary "$(MODEL)" --output "$(MANIFEST)"
 
 redis:
 	docker create --name redis -p $(REDIS_PORT):$(REDIS_PORT) redis:latest
