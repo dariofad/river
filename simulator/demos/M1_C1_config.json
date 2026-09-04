@@ -9,7 +9,7 @@
       "OFFSET": "308",
       "SIGNALS": [
         {
-          "NAME": "DREL",
+          "NAME": "d_rel",
           "TYPE": "float64",
           "ADDR": "30328"
         }
