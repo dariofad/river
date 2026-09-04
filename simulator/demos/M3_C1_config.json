@@ -9,7 +9,7 @@
       "OFFSET": "0",
       "SIGNALS": [
         {
-          "NAME": "PANGLE",
+          "NAME": "PedalAngle",
           "TYPE": "float64",
           "ADDR": "14720"
         }

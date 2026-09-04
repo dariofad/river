@@ -9,12 +9,12 @@
       "OFFSET": "74",
       "SIGNALS": [
         {
-          "NAME": "X",
+          "NAME": "x",
           "TYPE": "float64",
           "ADDR": "4048"
         },
         {
-          "NAME": "Y",
+          "NAME": "y",
           "TYPE": "float64",
           "ADDR": "4050"
         }

@@ -9,12 +9,12 @@
       "OFFSET": "0",
       "SIGNALS": [
         {
-          "NAME": "PANGLE",
+          "NAME": "PedalAngle",
           "TYPE": "float64",
           "ADDR": "14720"
         },
         {
-          "NAME": "RPM",
+          "NAME": "EngineSpeed",
           "TYPE": "float64",
           "ADDR": "14728"
         }
