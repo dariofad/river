@@ -12,11 +12,11 @@ import (
 	"github.com/dariofad/river/my_types"
 )
 
-const legacySignalLimit = 16
+const simulatorSignalLimit = 16
 
-// CompileLegacy validates a user-edited manifest against binary and lowers it
+// CompileConfiguration validates a user-edited manifest against binary and lowers it
 // to the configuration consumed by the unchanged simulator.
-func CompileLegacy(m *Manifest, binary string) (*my_types.Configuration, error) {
+func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, error) {
 	absolute, err := filepath.Abs(binary)
 	if err != nil {
 		return nil, fmt.Errorf("resolve binary path: %w", err)
@@ -101,7 +101,7 @@ func CompileLegacy(m *Manifest, binary string) (*my_types.Configuration, error) 
 				problems = append(problems, fmt.Sprintf("model %q %s hook: unknown hook %q", configured.Name, selected.Action, selected.ID))
 				continue
 			}
-			symbol, offset, err := compileLegacyHook(ef, dw, dm, hook.ID, selected.Phase, selected.Offset, dm.Manifest.Outputs)
+			symbol, offset, err := compileHook(ef, dw, dm, hook.ID, selected.Phase, selected.Offset, dm.Manifest.Outputs)
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("model %q %s hook %q at %s: %v", configured.Name, selected.Action, selected.ID, selected.Phase, err))
 				continue
@@ -110,7 +110,7 @@ func CompileLegacy(m *Manifest, binary string) (*my_types.Configuration, error) 
 				problems = append(problems, fmt.Sprintf("model %q %s hook %q has no data", configured.Name, selected.Action, selected.ID))
 				continue
 			}
-			signals := compileLegacySelection(selected, catalog, dm, instanceAddress, addressOK, step.Value, &problems)
+			signals := compileSelection(ef, selected, catalog, dm, instanceAddress, addressOK, step.Value, &problems)
 			for _, signal := range signals {
 				if selected.Action == "read" {
 					checkDuplicateName(readNames, signal.Name, configured.Name, "read", &problems)
@@ -146,11 +146,11 @@ func CompileLegacy(m *Manifest, binary string) (*my_types.Configuration, error) 
 	default:
 		config.TimerSymbol = timerModel.Funcs["step"]
 	}
-	if readCount > legacySignalLimit {
-		problems = append(problems, fmt.Sprintf("configuration has %d read signals; the legacy simulator supports at most %d", readCount, legacySignalLimit))
+	if readCount > simulatorSignalLimit {
+		problems = append(problems, fmt.Sprintf("configuration has %d read signals; the simulator supports at most %d", readCount, simulatorSignalLimit))
 	}
-	if writeCount > legacySignalLimit {
-		problems = append(problems, fmt.Sprintf("configuration has %d write signals; the legacy simulator supports at most %d", writeCount, legacySignalLimit))
+	if writeCount > simulatorSignalLimit {
+		problems = append(problems, fmt.Sprintf("configuration has %d write signals; the simulator supports at most %d", writeCount, simulatorSignalLimit))
 	}
 	if len(problems) > 0 {
 		return nil, errors.New("manifest cannot be compiled:\n  - " + strings.Join(problems, "\n  - "))
@@ -193,7 +193,7 @@ func buildHookCatalog(model Model, problems *[]string) map[string]*Hook {
 	return catalog
 }
 
-func compileLegacyHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, function, phase string, customOffset *uint64, outputs []Data) (string, uint64, error) {
+func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, function, phase string, customOffset *uint64, outputs []Data) (string, uint64, error) {
 	if function == "" {
 		return "", 0, errors.New("function is required")
 	}
@@ -255,7 +255,7 @@ func compileLegacyHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, functi
 	}
 }
 
-func compileLegacySelection(selected HookSelection, catalog map[string]Data, dm *discoveredModel, instanceAddress uint64, addressOK bool, stepAddress uint64, problems *[]string) []my_types.Signal {
+func compileSelection(ef *elf.File, selected HookSelection, catalog map[string]Data, dm *discoveredModel, instanceAddress uint64, addressOK bool, stepAddress uint64, problems *[]string) []my_types.Signal {
 	seenPaths := make(map[string]bool, len(selected.Data))
 	signals := make([]my_types.Signal, 0, len(selected.Data))
 	for _, path := range selected.Data {
@@ -283,16 +283,20 @@ func compileLegacySelection(selected HookSelection, catalog map[string]Data, dm 
 			continue
 		}
 		if item.Type != "float64" {
-			*problems = append(*problems, fmt.Sprintf("data %q has type %q; the legacy simulator supports only float64", item.Path, item.Type))
+			*problems = append(*problems, fmt.Sprintf("data %q has type %q; the simulator supports only float64", item.Path, item.Type))
 			continue
 		}
 		if item.Name == "" {
 			*problems = append(*problems, fmt.Sprintf("data %q has an empty name", item.Path))
 			continue
 		}
-		address, ok := legacyAddress(discovered, instanceAddress, addressOK, stepAddress)
+		address, ok := configurationAddress(discovered, instanceAddress, addressOK, stepAddress)
 		if !ok {
 			*problems = append(*problems, fmt.Sprintf("cannot resolve address for %q", item.Path))
+			continue
+		}
+		if err := validateDataRange(ef, address, 8, selected.Action == "write"); err != nil {
+			*problems = append(*problems, fmt.Sprintf("data %q: %v", item.Path, err))
 			continue
 		}
 		signals = append(signals, my_types.Signal{Name: item.Name, Type: item.Type, Addr: strconv.FormatUint(address, 16)})
@@ -300,7 +304,28 @@ func compileLegacySelection(selected HookSelection, catalog map[string]Data, dm 
 	return signals
 }
 
-func legacyAddress(data RuntimeData, instanceAddress uint64, instanceOK bool, stepAddress uint64) (uint64, bool) {
+func validateDataRange(ef *elf.File, address, size uint64, writable bool) error {
+	if size == 0 || address > ^uint64(0)-(size-1) {
+		return fmt.Errorf("address range %#x+%d overflows", address, size)
+	}
+	last := address + size - 1
+	for _, program := range ef.Progs {
+		if program.Type != elf.PT_LOAD || program.Memsz > ^uint64(0)-program.Vaddr {
+			continue
+		}
+		end := program.Vaddr + program.Memsz
+		if address < program.Vaddr || last >= end {
+			continue
+		}
+		if writable && program.Flags&elf.PF_W == 0 {
+			return fmt.Errorf("write address %#x is not in a writable load segment", address)
+		}
+		return nil
+	}
+	return fmt.Errorf("address %#x is outside the target's loadable image", address)
+}
+
+func configurationAddress(data RuntimeData, instanceAddress uint64, instanceOK bool, stepAddress uint64) (uint64, bool) {
 	switch data.Base {
 	case BaseThis:
 		if !instanceOK {

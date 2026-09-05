@@ -22,9 +22,9 @@ func Read(path string) (*Manifest, error) {
 	return &m, nil
 }
 
-// WriteLegacyConfiguration atomically writes the exact JSON shape consumed by
+// WriteConfiguration atomically writes the exact JSON shape consumed by
 // the existing simulator.
-func WriteLegacyConfiguration(path string, config *my_types.Configuration) error {
+func WriteConfiguration(path string, config *my_types.Configuration) error {
 	raw, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode simulator configuration: %w", err)

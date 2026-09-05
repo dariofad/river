@@ -66,8 +66,10 @@ Compilation verifies the binary fingerprint, resolves semantic hook IDs to
 symbols and instruction boundaries, verifies static model instances, data
 types and addresses, then atomically writes the existing JSON format. Every
 selected `read` or `write` hook becomes one JSON group. Selections may include
-supported `float64` inputs, outputs, and states (including static parameters).
-The legacy runtime supports at most 16 signals in each direction.
+supported scalar `float64` inputs, outputs, and states. States include
+continuous (`*_X`) and block (`*_DW`) state; static model parameters are
+available for reads and, when their ELF load segment is writable, writes. The
+simulator supports at most 16 signals in each direction.
 
 Use `entry`, `return`, or (for `step`) `post_outputs` to select a compiler-
 resolved phase. For a manually chosen probe site, use `phase: custom` and a
