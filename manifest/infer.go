@@ -45,11 +45,10 @@ func inferSemanticDefaults(binary string, m *Manifest, discovered *discovery) []
 			warnings = append(warnings, fmt.Sprintf("model %q: using terminal return (%v)", model.Name, err))
 			continue
 		}
-		if offset, ok := postOutputOffset(source, lines, symbol, model.Outputs); ok {
-			model.AvailableHooks = append(model.AvailableHooks, Hook{ID: "step.post_outputs", Function: "step", Phase: "post_outputs", Offset: offset})
+		if _, ok := postOutputOffset(source, lines, symbol, model.Outputs); ok {
 			for h := range model.Hooks {
-				if model.Hooks[h].Action == "read" {
-					model.Hooks[h].ID = "step.post_outputs"
+				if model.Hooks[h].ID == "step" && model.Hooks[h].Phase == "return" && model.Hooks[h].Action == "read" {
+					model.Hooks[h].Phase = "post_outputs"
 				}
 			}
 		} else {

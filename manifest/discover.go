@@ -121,9 +121,6 @@ func inspect(binary string) (*discovery, error) {
 	if err := addModelInstances(dw, ef, out); err != nil {
 		return nil, err
 	}
-	if err := addDefaultHookOffsets(ef, out); err != nil {
-		return nil, err
-	}
 	addStaticData(dw, ef, out)
 	return out, nil
 }
@@ -139,10 +136,7 @@ func buildModel(name string, class *dwarf.StructType, funcs map[string]string) *
 	}
 	sort.Strings(fnNames)
 	for _, fn := range fnNames {
-		for _, phase := range []string{"entry", "return"} {
-			h := Hook{ID: fn + "." + phase, Function: fn, Phase: phase}
-			m.AvailableHooks = append(m.AvailableHooks, h)
-		}
+		m.AvailableHooks = append(m.AvailableHooks, Hook{ID: fn})
 	}
 	dm := &discoveredModel{Manifest: m, Class: class, Funcs: funcs, Data: make(map[string]RuntimeData)}
 	for _, field := range class.Field {
@@ -159,11 +153,11 @@ func buildModel(name string, class *dwarf.StructType, funcs map[string]string) *
 	}
 	inputs := supportedPaths(dm.Manifest.Inputs)
 	if len(inputs) > 0 {
-		dm.Manifest.Hooks = append(dm.Manifest.Hooks, HookSelection{ID: "step.entry", Action: "write", Data: inputs})
+		dm.Manifest.Hooks = append(dm.Manifest.Hooks, HookSelection{ID: "step", Phase: "entry", Action: "write", Data: inputs})
 	}
 	reads := append(inputs, supportedPaths(dm.Manifest.Outputs)...)
 	if len(reads) > 0 {
-		dm.Manifest.Hooks = append(dm.Manifest.Hooks, HookSelection{ID: "step.return", Action: "read", Data: reads})
+		dm.Manifest.Hooks = append(dm.Manifest.Hooks, HookSelection{ID: "step", Phase: "return", Action: "read", Data: reads})
 	}
 	return dm
 }
@@ -268,33 +262,6 @@ func containsAddress(addresses []uint64, target uint64) bool {
 		}
 	}
 	return false
-}
-
-func addDefaultHookOffsets(ef *elf.File, found *discovery) error {
-	for _, dm := range found.Models {
-		filtered := dm.Manifest.AvailableHooks[:0]
-		for _, hook := range dm.Manifest.AvailableHooks {
-			if hook.Phase == "entry" {
-				hook.Offset = 0
-				filtered = append(filtered, hook)
-				continue
-			}
-			_, returns, err := functionInstructions(ef, dm.Funcs[hook.Function])
-			if err != nil {
-				return fmt.Errorf("find return probe for model %q function %q: %w", dm.Manifest.Name, hook.Function, err)
-			}
-			if len(returns) == 0 {
-				if hook.Function == "step" {
-					return fmt.Errorf("find return probe for model %q: step function has no return instruction", dm.Manifest.Name)
-				}
-				continue
-			}
-			hook.Offset = returns[len(returns)-1]
-			filtered = append(filtered, hook)
-		}
-		dm.Manifest.AvailableHooks = filtered
-	}
-	return nil
 }
 
 func functionInstructions(ef *elf.File, symbolName string) (map[uint64]bool, []uint64, error) {

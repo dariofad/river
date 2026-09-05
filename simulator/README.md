@@ -28,9 +28,9 @@ output assignment. If that proof is unavailable it conservatively uses
 `step.return` and emits a warning. States are available but not selected by
 default. Each model owns its own
 `available_hooks` and `hooks`: hook IDs are therefore model-local. Review
-`cycles`, `sample_every`, `timer_model`, data names, hook selections, and the
-offset on each available hook. Move an available hook's offset to the exact
-instruction where the unchanged simulator should inject or sample data.
+`cycles`, `sample_every`, `timer_model`, data names, and hook selections. The
+compiler resolves each selected hook's phase to the target binary's symbol and
+instruction offset, so the manifest remains independent of its machine code.
 
 For generated continuous models, `sample_every` is inferred from the actual
 number of `step()` calls in the generated fixed-step solver source (rather
@@ -41,19 +41,14 @@ implicit, variable-step, or unproven solver code uses `1` and emits a warning.
 models:
   - name: ToyModel
     available_hooks:
-      - id: step.entry
-        function: step
-        phase: entry
-        offset: 0
-      - id: step.post_outputs
-        function: step
-        phase: post_outputs
-        offset: 55
+      - id: step
     hooks:
-      - id: step.entry
+      - id: step
+        phase: entry
         action: write
         data: [ToyModel.ToyModel_U.x]
-      - id: step.post_outputs
+      - id: step
+        phase: post_outputs
         action: read
         data: [ToyModel.ToyModel_U.x, ToyModel.ToyModel_Y.y]
 ```
@@ -67,12 +62,24 @@ go run ./cmd/river-manifest compile \
   --output simulator/config.json
 ```
 
-Compilation verifies the binary fingerprint, symbols, static model instances,
-data types, addresses, and instruction boundaries before atomically writing
-the existing JSON format. Every selected `read` or `write` hook becomes one
-JSON group. Selections may include supported `float64` inputs, outputs, and
-states (including static parameters). The legacy runtime supports at most 16
-signals in each direction.
+Compilation verifies the binary fingerprint, resolves semantic hook IDs to
+symbols and instruction boundaries, verifies static model instances, data
+types and addresses, then atomically writes the existing JSON format. Every
+selected `read` or `write` hook becomes one JSON group. Selections may include
+supported `float64` inputs, outputs, and states (including static parameters).
+The legacy runtime supports at most 16 signals in each direction.
+
+Use `entry`, `return`, or (for `step`) `post_outputs` to select a compiler-
+resolved phase. For a manually chosen probe site, use `phase: custom` and a
+decimal `offset`; compilation verifies that it is an instruction boundary:
+
+```yaml
+- id: step
+  phase: custom
+  offset: 55
+  action: read
+  data: [ToyModel.ToyModel_Y.y]
+```
 
 ## Address model and ASLR
 

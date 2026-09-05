@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"debug/dwarf"
 	"debug/elf"
 	"errors"
 	"fmt"
@@ -35,6 +36,10 @@ func CompileLegacy(m *Manifest, binary string) (*my_types.Configuration, error) 
 		return nil, fmt.Errorf("open ELF: %w", err)
 	}
 	defer ef.Close()
+	dw, err := ef.DWARF()
+	if err != nil {
+		return nil, fmt.Errorf("read DWARF (build the model unstripped with -g): %w", err)
+	}
 
 	config := &my_types.Configuration{ModelPath: absolute, MinorToMajorRatio: strconv.FormatUint(uint64(m.Settings.SampleEvery), 10), NofCycles: strconv.FormatUint(uint64(m.Settings.Cycles), 10), Reads: []my_types.Group{}, Writes: []my_types.Group{}}
 	var problems []string
@@ -78,9 +83,12 @@ func CompileLegacy(m *Manifest, binary string) (*my_types.Configuration, error) 
 		hooks := buildHookCatalog(configured, &problems)
 		seenSelections := make(map[string]bool)
 		for _, selected := range configured.Hooks {
-			key := selected.ID + "\x00" + selected.Action
+			key := selected.ID + "\x00" + selected.Phase + "\x00" + selected.Action
+			if selected.Phase == "custom" && selected.Offset != nil {
+				key += "\x00" + strconv.FormatUint(*selected.Offset, 10)
+			}
 			if seenSelections[key] {
-				problems = append(problems, fmt.Sprintf("model %q selects hook %q for %s more than once", configured.Name, selected.ID, selected.Action))
+				problems = append(problems, fmt.Sprintf("model %q selects hook %q at %s for %s more than once", configured.Name, selected.ID, selected.Phase, selected.Action))
 				continue
 			}
 			seenSelections[key] = true
@@ -93,9 +101,9 @@ func CompileLegacy(m *Manifest, binary string) (*my_types.Configuration, error) 
 				problems = append(problems, fmt.Sprintf("model %q %s hook: unknown hook %q", configured.Name, selected.Action, selected.ID))
 				continue
 			}
-			symbol, offset, err := compileLegacyHook(ef, dm, *hook)
+			symbol, offset, err := compileLegacyHook(ef, dw, dm, hook.ID, selected.Phase, selected.Offset, dm.Manifest.Outputs)
 			if err != nil {
-				problems = append(problems, fmt.Sprintf("model %q %s hook %q: %v", configured.Name, selected.Action, selected.ID, err))
+				problems = append(problems, fmt.Sprintf("model %q %s hook %q at %s: %v", configured.Name, selected.Action, selected.ID, selected.Phase, err))
 				continue
 			}
 			if len(selected.Data) == 0 {
@@ -185,22 +193,66 @@ func buildHookCatalog(model Model, problems *[]string) map[string]*Hook {
 	return catalog
 }
 
-func compileLegacyHook(ef *elf.File, dm *discoveredModel, hook Hook) (string, uint64, error) {
-	if hook.Function == "" {
+func compileLegacyHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, function, phase string, customOffset *uint64, outputs []Data) (string, uint64, error) {
+	if function == "" {
 		return "", 0, errors.New("function is required")
 	}
-	symbol := dm.Funcs[hook.Function]
-	if symbol == "" {
-		return "", 0, fmt.Errorf("function %q is missing from the target ELF", hook.Function)
+	if phase == "" {
+		return "", 0, errors.New("phase is required")
 	}
-	boundaries, _, err := functionInstructions(ef, symbol)
+	symbol := dm.Funcs[function]
+	if symbol == "" {
+		return "", 0, fmt.Errorf("function %q is missing from the target ELF", function)
+	}
+	boundaries, returns, err := functionInstructions(ef, symbol)
 	if err != nil {
 		return "", 0, err
 	}
-	if !boundaries[hook.Offset] {
-		return "", 0, fmt.Errorf("offset %d is not an instruction boundary within %s", hook.Offset, symbol)
+	switch phase {
+	case "entry":
+		if customOffset != nil {
+			return "", 0, errors.New("offset is only valid for the custom phase")
+		}
+		return symbol, 0, nil
+	case "return":
+		if customOffset != nil {
+			return "", 0, errors.New("offset is only valid for the custom phase")
+		}
+		if len(returns) == 0 {
+			return "", 0, fmt.Errorf("function %q has no return instruction", function)
+		}
+		return symbol, returns[len(returns)-1], nil
+	case "post_outputs":
+		if customOffset != nil {
+			return "", 0, errors.New("offset is only valid for the custom phase")
+		}
+		if function != "step" {
+			return "", 0, fmt.Errorf("post_outputs is only available for step")
+		}
+		functionSymbol, err := findFunctionSymbol(ef, symbol)
+		if err != nil {
+			return "", 0, err
+		}
+		source, lines, err := functionSource(dw, functionSymbol, outputs)
+		if err != nil {
+			return "", 0, fmt.Errorf("locate post-output source site: %w", err)
+		}
+		offset, ok := postOutputOffset(source, lines, functionSymbol, outputs)
+		if !ok || !boundaries[offset] {
+			return "", 0, errors.New("cannot resolve a post-output instruction boundary")
+		}
+		return symbol, offset, nil
+	case "custom":
+		if customOffset == nil {
+			return "", 0, errors.New("custom phase requires an offset")
+		}
+		if !boundaries[*customOffset] {
+			return "", 0, fmt.Errorf("offset %d is not an instruction boundary within %s", *customOffset, symbol)
+		}
+		return symbol, *customOffset, nil
+	default:
+		return "", 0, fmt.Errorf("unknown hook phase %q", phase)
 	}
-	return symbol, hook.Offset, nil
 }
 
 func compileLegacySelection(selected HookSelection, catalog map[string]Data, dm *discoveredModel, instanceAddress uint64, addressOK bool, stepAddress uint64, problems *[]string) []my_types.Signal {
