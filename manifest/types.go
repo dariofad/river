@@ -1,8 +1,8 @@
 package manifest
 
 // Manifest is the human-editable contract between river-manifest and River.
-// It keeps data identities semantic while retaining user-selected uprobe
-// offsets. ELF addresses and symbols are resolved when it is compiled to JSON.
+// It keeps data identities and hook intent semantic. ELF symbols, addresses,
+// and uprobe offsets are resolved only when it is compiled to JSON.
 type Manifest struct {
 	Version  uint32   `yaml:"version" json:"version"`
 	Artifact Artifact `yaml:"artifact" json:"artifact"`
@@ -31,19 +31,20 @@ type Model struct {
 	States         []Data          `yaml:"states,omitempty" json:"states,omitempty"`
 }
 
-// HookSelection selects one model-local available hook and the data to attach
-// to it. A hook may be selected once for each action.
+// HookSelection selects one model-local available function, a semantic phase,
+// and the data to attach. A function/phase pair may be selected once per
+// action, except custom selections which are distinguished by offset. Offset
+// is only valid for the custom phase.
 type HookSelection struct {
 	ID     string   `yaml:"id" json:"id"`
+	Phase  string   `yaml:"phase" json:"phase"`
+	Offset *uint64  `yaml:"offset,omitempty" json:"offset,omitempty"`
 	Action string   `yaml:"action" json:"action"`
 	Data   []string `yaml:"data" json:"data"`
 }
 
 type Hook struct {
-	ID       string `yaml:"id" json:"id"`
-	Function string `yaml:"function" json:"function"`
-	Phase    string `yaml:"phase" json:"phase"`
-	Offset   uint64 `yaml:"offset" json:"offset"`
+	ID string `yaml:"id" json:"id"`
 }
 
 type Data struct {

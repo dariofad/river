@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -141,11 +142,11 @@ func TestGenerateAndCompileLegacy(t *testing.T) {
 	if model.Name != "TestModel" || m.Settings.TimerModel != "TestModel" {
 		t.Fatalf("unexpected generated model/timer: %q/%q", model.Name, m.Settings.TimerModel)
 	}
-	if len(model.Hooks) != 2 || model.Hooks[0].ID != "step.entry" || model.Hooks[0].Action != "write" || model.Hooks[1].ID != "step.post_outputs" || model.Hooks[1].Action != "read" {
+	if len(model.Hooks) != 2 || model.Hooks[0].ID != "step" || model.Hooks[0].Phase != "entry" || model.Hooks[0].Action != "write" || model.Hooks[1].ID != "step" || model.Hooks[1].Phase != "post_outputs" || model.Hooks[1].Action != "read" {
 		t.Fatalf("unexpected generated hooks: %#v", model.Hooks)
 	}
-	if model.AvailableHooks[0].Offset != 0 || model.AvailableHooks[1].Offset == 0 || model.AvailableHooks[2].ID != "step.post_outputs" || model.AvailableHooks[2].Offset == 0 {
-		t.Fatalf("available hook offsets were not generated: %#v", model.AvailableHooks)
+	if got, want := model.AvailableHooks, []Hook{{ID: "step"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("available hooks = %#v, want %#v", got, want)
 	}
 	config, err := CompileLegacy(m, binary)
 	if err != nil {
@@ -162,6 +163,9 @@ func TestGenerateAndCompileLegacy(t *testing.T) {
 	}
 	if len(config.Reads) != 1 || len(config.Reads[0].Signals) != 2 {
 		t.Fatalf("unexpected reads: %#v", config.Reads)
+	}
+	if config.Reads[0].Offset == "0" {
+		t.Fatalf("post-output hook was not resolved to an instruction after entry: %#v", config.Reads[0])
 	}
 	if config.Reads[0].Signals[0].Name != "input" || config.Reads[0].Signals[1].Name != "output" {
 		t.Fatalf("inputs must precede outputs in reads: %#v", config.Reads[0].Signals)
@@ -213,10 +217,10 @@ func TestCompileLegacyReportsCompatibilityProblems(t *testing.T) {
 	m, binary := configuredManifest(t)
 	m.Settings.Cycles = 0
 	m.Settings.TimerModel = "missing"
-	m.Models[0].AvailableHooks[0].Offset = 1 << 30
-	m.Models[0].Outputs[0].Name = m.Models[0].Inputs[0].Name
+	m.Models[0].Hooks[0].Phase = "invalid"
+	m.Models[0].Inputs[0].Name = m.Models[0].Outputs[0].Name
 	readHook := m.Models[0].Hooks[1].ID
-	m.Models[0].Hooks = append(m.Models[0].Hooks, HookSelection{ID: readHook, Action: "read", Data: []string{m.Models[0].States[0].Path}})
+	m.Models[0].Hooks = append(m.Models[0].Hooks, HookSelection{ID: readHook, Phase: m.Models[0].Hooks[1].Phase, Action: "read", Data: []string{m.Models[0].States[0].Path}})
 	_, err := CompileLegacy(m, binary)
 	if err == nil {
 		t.Fatal("expected compatibility error")
@@ -224,8 +228,8 @@ func TestCompileLegacyReportsCompatibilityProblems(t *testing.T) {
 	message := err.Error()
 	for _, want := range []string{
 		"settings.cycles must be at least 1",
-		"not an instruction boundary",
-		"selects hook \"" + readHook + "\" for read more than once",
+		"unknown hook phase \"invalid\"",
+		"selects hook \"" + readHook + "\" at post_outputs for read more than once",
 		"duplicate read signal name",
 		"timer model \"missing\" is not enabled",
 	} {
@@ -239,9 +243,9 @@ func TestCompileLegacySupportsIndependentHookSelectionsAndStates(t *testing.T) {
 	m, binary := configuredManifest(t)
 	model := &m.Models[0]
 	model.Hooks = []HookSelection{
-		{ID: "step.entry", Action: "write", Data: []string{model.Inputs[0].Path, model.States[0].Path}},
-		{ID: "step.entry", Action: "read", Data: []string{model.States[0].Path}},
-		{ID: "step.return", Action: "read", Data: []string{model.Inputs[0].Path, model.Outputs[0].Path}},
+		{ID: "step", Phase: "entry", Action: "write", Data: []string{model.Inputs[0].Path, model.States[0].Path}},
+		{ID: "step", Phase: "entry", Action: "read", Data: []string{model.States[0].Path}},
+		{ID: "step", Phase: "return", Action: "read", Data: []string{model.Inputs[0].Path, model.Outputs[0].Path}},
 	}
 	config, err := CompileLegacy(m, binary)
 	if err != nil {
@@ -252,6 +256,44 @@ func TestCompileLegacySupportsIndependentHookSelectionsAndStates(t *testing.T) {
 	}
 	if len(config.Reads) != 2 || config.Reads[0].Offset != "0" || len(config.Reads[1].Signals) != 2 {
 		t.Fatalf("unexpected reads: %#v", config.Reads)
+	}
+}
+
+func TestCompileLegacySupportsCustomHookOffset(t *testing.T) {
+	m, binary := configuredManifest(t)
+	baseline, err := CompileLegacy(m, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offset, err := strconv.ParseUint(baseline.Reads[0].Offset, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &m.Models[0]
+	model.Hooks = []HookSelection{{ID: "step", Phase: "custom", Offset: &offset, Action: "read", Data: []string{model.Outputs[0].Path}}}
+	config, err := CompileLegacy(m, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(config.Reads) != 1 || config.Reads[0].Offset != baseline.Reads[0].Offset {
+		t.Fatalf("custom hook was not lowered at its requested offset: %#v", config.Reads)
+	}
+
+	model.Hooks[0].Offset = nil
+	if _, err := CompileLegacy(m, binary); err == nil || !strings.Contains(err.Error(), "custom phase requires an offset") {
+		t.Fatalf("expected missing custom offset error, got %v", err)
+	}
+
+	invalidOffset := uint64(1 << 30)
+	model.Hooks[0].Offset = &invalidOffset
+	if _, err := CompileLegacy(m, binary); err == nil || !strings.Contains(err.Error(), "not an instruction boundary") {
+		t.Fatalf("expected invalid custom offset error, got %v", err)
+	}
+
+	model.Hooks[0].Phase = "entry"
+	model.Hooks[0].Offset = &offset
+	if _, err := CompileLegacy(m, binary); err == nil || !strings.Contains(err.Error(), "offset is only valid for the custom phase") {
+		t.Fatalf("expected non-custom offset error, got %v", err)
 	}
 }
 
@@ -268,7 +310,7 @@ func TestCompileLegacySupportsStaticStates(t *testing.T) {
 	if parameter.Path == "" {
 		t.Fatalf("static parameter was not discovered: %#v", model.States)
 	}
-	model.Hooks = []HookSelection{{ID: "step.return", Action: "read", Data: []string{parameter.Path}}}
+	model.Hooks = []HookSelection{{ID: "step", Phase: "return", Action: "read", Data: []string{parameter.Path}}}
 	config, err := CompileLegacy(m, binary)
 	if err != nil {
 		t.Fatal(err)
@@ -282,15 +324,15 @@ func TestCompileLegacyRejectsInvalidHookSelection(t *testing.T) {
 	m, binary := configuredManifest(t)
 	model := &m.Models[0]
 	model.Hooks = append(model.Hooks,
-		HookSelection{ID: "step.entry", Action: "write", Data: []string{model.Inputs[0].Path}},
-		HookSelection{ID: "missing", Action: "read", Data: []string{model.Outputs[0].Path}},
-		HookSelection{ID: "step.return", Action: "invalid", Data: []string{model.Outputs[0].Path}},
+		HookSelection{ID: "step", Phase: "entry", Action: "write", Data: []string{model.Inputs[0].Path}},
+		HookSelection{ID: "missing", Phase: "return", Action: "read", Data: []string{model.Outputs[0].Path}},
+		HookSelection{ID: "step", Phase: "return", Action: "invalid", Data: []string{model.Outputs[0].Path}},
 	)
 	_, err := CompileLegacy(m, binary)
 	if err == nil {
 		t.Fatal("expected invalid selection errors")
 	}
-	for _, want := range []string{"selects hook \"step.entry\" for write more than once", "unknown hook \"missing\"", "invalid action \"invalid\""} {
+	for _, want := range []string{"selects hook \"step\" at entry for write more than once", "unknown hook \"missing\"", "invalid action \"invalid\""} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}
