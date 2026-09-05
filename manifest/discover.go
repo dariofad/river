@@ -55,7 +55,7 @@ func Generate(binary string) (*Manifest, []string, error) {
 	}
 	for _, name := range names {
 		model := d.Models[name].Manifest
-		// The legacy JSON payload has one global signal namespace.  Leave
+		// The simulator JSON payload has one global signal namespace. Leave
 		// additional discovered models available for the user to configure, but
 		// disabled by default so equal input names cannot make a fresh manifest
 		// uncompilable.
@@ -353,15 +353,18 @@ func (dm *discoveredModel) addLeaves(field *dwarf.StructField, category string, 
 			}
 			return
 		}
-		primitive, ok := primitiveOf(t)
+		primitive, ok, reason := simulatorPrimitiveOf(t)
 		leaf := path[strings.LastIndex(path, ".")+1:]
 		item := Data{Name: leaf, Path: path, Category: category, Supported: ok}
-		if ok {
+		if primitive.Name != "" {
 			item.Type = primitive.Name
-			dm.Data[path] = RuntimeData{Path: path, Name: leaf, Category: category, Type: primitive, Base: BaseThis, Offset: offset}
 		} else {
 			item.Type = t.String()
-			item.Reason = "only scalar primitive values are supported"
+		}
+		if ok {
+			dm.Data[path] = RuntimeData{Path: path, Name: leaf, Category: category, Type: primitive, Base: BaseThis, Offset: offset}
+		} else {
+			item.Reason = reason
 		}
 		*dst = append(*dst, item)
 	}
@@ -392,16 +395,19 @@ func (dm *discoveredModel) addStaticLeaves(name string, t dwarf.Type, symbolValu
 		if dm.hasStatePath(path) {
 			return
 		}
-		primitive, ok := primitiveOf(current)
+		primitive, ok, reason := simulatorPrimitiveOf(current)
 		leaf := path[strings.LastIndex(path, ".")+1:]
 		item := Data{Name: leaf, Path: path, Category: "parameter", Supported: ok}
-		if ok {
+		if primitive.Name != "" {
 			item.Type = primitive.Name
+		} else {
+			item.Type = current.String()
+		}
+		if ok {
 			delta := int64(symbolValue) - int64(stepValue) + memberOffset
 			dm.Data[path] = RuntimeData{Path: path, Name: leaf, Category: "parameter", Type: primitive, Base: BaseELF, Offset: delta}
 		} else {
-			item.Type = current.String()
-			item.Reason = "only scalar primitive values are supported"
+			item.Reason = reason
 		}
 		dm.Manifest.States = append(dm.Manifest.States, item)
 	}
@@ -491,6 +497,17 @@ func primitiveOf(t dwarf.Type) (PrimitiveType, bool) {
 		return PrimitiveType{Name: "uint8", Size: 1}, true
 	}
 	return PrimitiveType{}, false
+}
+
+func simulatorPrimitiveOf(t dwarf.Type) (PrimitiveType, bool, string) {
+	primitive, ok := primitiveOf(t)
+	if !ok {
+		return PrimitiveType{}, false, "only scalar primitive values are supported"
+	}
+	if primitive.Name != "float64" {
+		return primitive, false, "the simulator supports only scalar float64 values"
+	}
+	return primitive, true, ""
 }
 
 func unwrapType(t dwarf.Type) dwarf.Type {

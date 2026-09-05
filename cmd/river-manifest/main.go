@@ -73,11 +73,11 @@ func runCompile(args []string) error {
 	if err != nil {
 		return err
 	}
-	config, err := manifest.CompileLegacy(m, *binary)
+	config, err := manifest.CompileConfiguration(m, *binary)
 	if err != nil {
 		return err
 	}
-	if err := manifest.WriteLegacyConfiguration(*output, config); err != nil {
+	if err := manifest.WriteConfiguration(*output, config); err != nil {
 		return err
 	}
 	log.Printf("wrote %s", *output)

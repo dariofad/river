@@ -43,7 +43,7 @@ class TestModel {
 public:
     struct ExtU { double input; } TestModel_U;
     struct ExtY { double output; } TestModel_Y;
-    struct State { double memory; } TestModel_DW;
+    struct State { double memory; int mode; } TestModel_DW;
     static double parameter;
     void step();
 };
@@ -78,7 +78,7 @@ func compileFixture(t *testing.T, code string) string {
 	return binary
 }
 
-func TestCompileLegacyFlattensMultipleModels(t *testing.T) {
+func TestCompileConfigurationFlattensMultipleModels(t *testing.T) {
 	binary := compileFixture(t, `
 class Alpha {
 public:
@@ -107,7 +107,7 @@ int main() { alpha.step(); beta.step(); return 0; }
 	}
 	m.Settings.Cycles = 10
 	m.Settings.TimerModel = "Beta"
-	config, err := CompileLegacy(m, binary)
+	config, err := CompileConfiguration(m, binary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func configuredManifest(t *testing.T) (*Manifest, string) {
 	return m, binary
 }
 
-func TestGenerateAndCompileLegacy(t *testing.T) {
+func TestGenerateAndCompileConfiguration(t *testing.T) {
 	m, binary := configuredManifest(t)
 	if got, want := len(m.Models), 1; got != want {
 		t.Fatalf("models = %d, want %d", got, want)
@@ -148,7 +148,7 @@ func TestGenerateAndCompileLegacy(t *testing.T) {
 	if got, want := model.AvailableHooks, []Hook{{ID: "step"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("available hooks = %#v, want %#v", got, want)
 	}
-	config, err := CompileLegacy(m, binary)
+	config, err := CompileConfiguration(m, binary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestPostOutputOffset(t *testing.T) {
 	}
 }
 
-func TestCompileLegacyReportsCompatibilityProblems(t *testing.T) {
+func TestCompileConfigurationReportsCompatibilityProblems(t *testing.T) {
 	m, binary := configuredManifest(t)
 	m.Settings.Cycles = 0
 	m.Settings.TimerModel = "missing"
@@ -221,7 +221,7 @@ func TestCompileLegacyReportsCompatibilityProblems(t *testing.T) {
 	m.Models[0].Inputs[0].Name = m.Models[0].Outputs[0].Name
 	readHook := m.Models[0].Hooks[1].ID
 	m.Models[0].Hooks = append(m.Models[0].Hooks, HookSelection{ID: readHook, Phase: m.Models[0].Hooks[1].Phase, Action: "read", Data: []string{m.Models[0].States[0].Path}})
-	_, err := CompileLegacy(m, binary)
+	_, err := CompileConfiguration(m, binary)
 	if err == nil {
 		t.Fatal("expected compatibility error")
 	}
@@ -239,7 +239,7 @@ func TestCompileLegacyReportsCompatibilityProblems(t *testing.T) {
 	}
 }
 
-func TestCompileLegacySupportsIndependentHookSelectionsAndStates(t *testing.T) {
+func TestCompileConfigurationSupportsIndependentHookSelectionsAndStates(t *testing.T) {
 	m, binary := configuredManifest(t)
 	model := &m.Models[0]
 	model.Hooks = []HookSelection{
@@ -247,7 +247,7 @@ func TestCompileLegacySupportsIndependentHookSelectionsAndStates(t *testing.T) {
 		{ID: "step", Phase: "entry", Action: "read", Data: []string{model.States[0].Path}},
 		{ID: "step", Phase: "return", Action: "read", Data: []string{model.Inputs[0].Path, model.Outputs[0].Path}},
 	}
-	config, err := CompileLegacy(m, binary)
+	config, err := CompileConfiguration(m, binary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,9 +259,9 @@ func TestCompileLegacySupportsIndependentHookSelectionsAndStates(t *testing.T) {
 	}
 }
 
-func TestCompileLegacySupportsCustomHookOffset(t *testing.T) {
+func TestCompileConfigurationSupportsCustomHookOffset(t *testing.T) {
 	m, binary := configuredManifest(t)
-	baseline, err := CompileLegacy(m, binary)
+	baseline, err := CompileConfiguration(m, binary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func TestCompileLegacySupportsCustomHookOffset(t *testing.T) {
 	}
 	model := &m.Models[0]
 	model.Hooks = []HookSelection{{ID: "step", Phase: "custom", Offset: &offset, Action: "read", Data: []string{model.Outputs[0].Path}}}
-	config, err := CompileLegacy(m, binary)
+	config, err := CompileConfiguration(m, binary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,24 +280,24 @@ func TestCompileLegacySupportsCustomHookOffset(t *testing.T) {
 	}
 
 	model.Hooks[0].Offset = nil
-	if _, err := CompileLegacy(m, binary); err == nil || !strings.Contains(err.Error(), "custom phase requires an offset") {
+	if _, err := CompileConfiguration(m, binary); err == nil || !strings.Contains(err.Error(), "custom phase requires an offset") {
 		t.Fatalf("expected missing custom offset error, got %v", err)
 	}
 
 	invalidOffset := uint64(1 << 30)
 	model.Hooks[0].Offset = &invalidOffset
-	if _, err := CompileLegacy(m, binary); err == nil || !strings.Contains(err.Error(), "not an instruction boundary") {
+	if _, err := CompileConfiguration(m, binary); err == nil || !strings.Contains(err.Error(), "not an instruction boundary") {
 		t.Fatalf("expected invalid custom offset error, got %v", err)
 	}
 
 	model.Hooks[0].Phase = "entry"
 	model.Hooks[0].Offset = &offset
-	if _, err := CompileLegacy(m, binary); err == nil || !strings.Contains(err.Error(), "offset is only valid for the custom phase") {
+	if _, err := CompileConfiguration(m, binary); err == nil || !strings.Contains(err.Error(), "offset is only valid for the custom phase") {
 		t.Fatalf("expected non-custom offset error, got %v", err)
 	}
 }
 
-func TestCompileLegacySupportsStaticStates(t *testing.T) {
+func TestCompileConfigurationSupportsStaticStates(t *testing.T) {
 	m, binary := configuredManifest(t)
 	model := &m.Models[0]
 	var parameter Data
@@ -311,7 +311,7 @@ func TestCompileLegacySupportsStaticStates(t *testing.T) {
 		t.Fatalf("static parameter was not discovered: %#v", model.States)
 	}
 	model.Hooks = []HookSelection{{ID: "step", Phase: "return", Action: "read", Data: []string{parameter.Path}}}
-	config, err := CompileLegacy(m, binary)
+	config, err := CompileConfiguration(m, binary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,32 @@ func TestCompileLegacySupportsStaticStates(t *testing.T) {
 	}
 }
 
-func TestCompileLegacyRejectsInvalidHookSelection(t *testing.T) {
+func TestStateSupportMatchesLegacyRuntime(t *testing.T) {
+	m, binary := configuredManifest(t)
+	model := &m.Models[0]
+	var integerState, parameter Data
+	for _, state := range model.States {
+		switch {
+		case state.Path == "TestModel.TestModel_DW.mode":
+			integerState = state
+		case state.Category == "parameter":
+			parameter = state
+		}
+	}
+	if integerState.Supported || integerState.Type != "int32" || !strings.Contains(integerState.Reason, "float64") {
+		t.Fatalf("integer state compatibility = %#v", integerState)
+	}
+	model.Hooks = []HookSelection{{ID: "step", Phase: "entry", Action: "write", Data: []string{parameter.Path}}}
+	config, err := CompileConfiguration(m, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(config.Writes) != 1 || len(config.Writes[0].Signals) != 1 {
+		t.Fatalf("writable parameter was not lowered: %#v", config.Writes)
+	}
+}
+
+func TestCompileConfigurationRejectsInvalidHookSelection(t *testing.T) {
 	m, binary := configuredManifest(t)
 	model := &m.Models[0]
 	model.Hooks = append(model.Hooks,
@@ -328,7 +353,7 @@ func TestCompileLegacyRejectsInvalidHookSelection(t *testing.T) {
 		HookSelection{ID: "missing", Phase: "return", Action: "read", Data: []string{model.Outputs[0].Path}},
 		HookSelection{ID: "step", Phase: "return", Action: "invalid", Data: []string{model.Outputs[0].Path}},
 	)
-	_, err := CompileLegacy(m, binary)
+	_, err := CompileConfiguration(m, binary)
 	if err == nil {
 		t.Fatal("expected invalid selection errors")
 	}
@@ -339,15 +364,15 @@ func TestCompileLegacyRejectsInvalidHookSelection(t *testing.T) {
 	}
 }
 
-func TestCompileLegacyRejectsStaleBuild(t *testing.T) {
+func TestCompileConfigurationRejectsStaleBuild(t *testing.T) {
 	m, binary := configuredManifest(t)
 	m.Artifact.BuildID = "sha256:stale"
-	if _, err := CompileLegacy(m, binary); err == nil || !strings.Contains(err.Error(), "build_id") {
+	if _, err := CompileConfiguration(m, binary); err == nil || !strings.Contains(err.Error(), "build_id") {
 		t.Fatalf("expected stale build error, got %v", err)
 	}
 }
 
-func TestCompileLegacyAcceptsMatchingBinaryAtNewPath(t *testing.T) {
+func TestCompileConfigurationAcceptsMatchingBinaryAtNewPath(t *testing.T) {
 	m, binary := configuredManifest(t)
 	raw, err := os.ReadFile(binary)
 	if err != nil {
@@ -357,7 +382,7 @@ func TestCompileLegacyAcceptsMatchingBinaryAtNewPath(t *testing.T) {
 	if err := os.WriteFile(moved, raw, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config, err := CompileLegacy(m, moved)
+	config, err := CompileConfiguration(m, moved)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,14 +391,14 @@ func TestCompileLegacyAcceptsMatchingBinaryAtNewPath(t *testing.T) {
 	}
 }
 
-func TestWriteLegacyConfigurationIsSimulatorCompatible(t *testing.T) {
+func TestWriteConfigurationIsSimulatorCompatible(t *testing.T) {
 	m, binary := configuredManifest(t)
-	config, err := CompileLegacy(m, binary)
+	config, err := CompileConfiguration(m, binary)
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "config.json")
-	if err := WriteLegacyConfiguration(path, config); err != nil {
+	if err := WriteConfiguration(path, config); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(path)
@@ -382,7 +407,7 @@ func TestWriteLegacyConfigurationIsSimulatorCompatible(t *testing.T) {
 	}
 	for _, key := range []string{"MODEL_PATH", "TIMER_SYMBOL", "MINOR_TO_MAJOR_RATIO", "NOF_CYCLES", "READS", "WRITES", "SIGNALS", "ADDR"} {
 		if !strings.Contains(string(raw), `"`+key+`"`) {
-			t.Errorf("JSON is missing legacy key %q: %s", key, raw)
+			t.Errorf("JSON is missing simulator key %q: %s", key, raw)
 		}
 	}
 }
