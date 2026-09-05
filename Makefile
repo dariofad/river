@@ -1,7 +1,8 @@
-.PHONY: all bench build build_bench check-env clean generate generate_bench manifest redis run start_redis stop_redis vmlinux
+.PHONY: all bench build build_bench check-env clean generate generate_bench redis run start_redis stop_redis vmlinux
 
 EBPF_PROBE = probe
 GO_MODULE = river
+MANIFEST_COMMAND = river-manifest
 SIMULATOR_PATH := simulator
 REDIS_PORT := 6379
 ARCH:= $(shell go env GOARCH)
@@ -34,13 +35,9 @@ state_pert_injector:
 build: generate pert_injector state_pert_injector
 # with CGO_ENABLED=0 the build doesn't depend on libc
 	@CGO_ENABLED=0 GOARCH=$(ARCH) go build
+	@CGO_ENABLED=0 GOARCH=$(ARCH) go build -o $(MANIFEST_COMMAND) ./cmd/river-manifest
 build_bench: generate_bench pert_injector state_pert_injector
 	@CGO_ENABLED=0 GOARCH=$(ARCH) go build
-
-manifest:
-	@test -n "$(MODEL)" || (echo "MODEL=/path/to/model is required"; exit 2)
-	@test -n "$(MANIFEST)" || (echo "MANIFEST=/path/to/model.river.yaml is required"; exit 2)
-	@go run ./cmd/river-manifest generate --binary "$(MODEL)" --output "$(MANIFEST)"
 
 redis:
 	docker create --name redis -p $(REDIS_PORT):$(REDIS_PORT) redis:latest
@@ -74,4 +71,4 @@ bench: _run_bench
 
 clean:
 	@rm -rf $(SIMULATOR_PATH)/headers
-	@rm -rf $(GO_MODULE) $(SIMULATOR_PATH)/$(EBPF_PROBE)_bpf* $(SIMULATOR_PATH)/injector $(SIMULATOR_PATH)/state_injector
+	@rm -rf $(GO_MODULE) $(MANIFEST_COMMAND) $(SIMULATOR_PATH)/$(EBPF_PROBE)_bpf* $(SIMULATOR_PATH)/injector $(SIMULATOR_PATH)/state_injector
