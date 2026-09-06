@@ -78,6 +78,58 @@ func compileFixture(t *testing.T, code string) string {
 	return binary
 }
 
+func manualFixture(t *testing.T) (string, map[string]uint64) {
+	t.Helper()
+	binary := compileFixtureWithoutDebug(t, `
+extern "C" double manual_input = 1.0;
+extern "C" double manual_output = 0.0;
+extern "C" double manual_state = 2.0;
+extern "C" void manual_tick() {
+    manual_output = manual_input + manual_state;
+    manual_state = manual_output;
+}
+int main() { manual_tick(); return 0; }
+`)
+	ef, err := elf.Open(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ef.Close()
+	syms, err := ef.Symbols()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addresses := make(map[string]uint64)
+	for _, symbol := range syms {
+		if symbol.Name == "manual_input" || symbol.Name == "manual_output" || symbol.Name == "manual_state" {
+			addresses[symbol.Name] = symbol.Value
+		}
+	}
+	if len(addresses) != 3 {
+		t.Fatalf("manual fixture symbols = %#v", addresses)
+	}
+	return binary, addresses
+}
+
+func compileFixtureWithoutDebug(t *testing.T, code string) string {
+	t.Helper()
+	compiler, err := exec.LookPath("g++")
+	if err != nil {
+		t.Skip("g++ is required for ELF manifest tests")
+	}
+	dir := t.TempDir()
+	source := filepath.Join(dir, "manual.cpp")
+	binary := filepath.Join(dir, "manual")
+	if err := os.WriteFile(source, []byte(code), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(compiler, "-O0", "-fcf-protection=none", "-o", binary, source)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("compile manual fixture: %v\n%s", err, output)
+	}
+	return binary
+}
+
 func TestCompileConfigurationFlattensMultipleModels(t *testing.T) {
 	binary := compileFixture(t, `
 class Alpha {
@@ -177,6 +229,83 @@ func TestGenerateAndCompileConfiguration(t *testing.T) {
 	if err != nil || address < 0x1000 {
 		t.Fatalf("instance field lowered to member offset instead of ELF address: %q", config.Writes[0].Signals[0].Addr)
 	}
+}
+
+func TestCompileConfigurationDefaultsTimerHookToStep(t *testing.T) {
+	m, binary := configuredManifest(t)
+	m.Settings.TimerHook = ""
+	config, err := CompileConfiguration(m, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.TimerSymbol != "_ZN9TestModel4stepEv" {
+		t.Fatalf("default timer hook = %q", config.TimerSymbol)
+	}
+}
+
+func TestGenerateManualSkeletonAndCompileCustomDataWithoutDWARF(t *testing.T) {
+	binary, addresses := manualFixture(t)
+	generated, warnings, err := Generate(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(generated.Models) != 0 || generated.Settings.TimerModel != "" || len(warnings) != 1 || !strings.Contains(warnings[0], "define models") {
+		t.Fatalf("manual skeleton = %#v, warnings = %#v", generated, warnings)
+	}
+	input, output, state := addresses["manual_input"], addresses["manual_output"], addresses["manual_state"]
+	generated.Settings = Settings{Cycles: 4, SampleEvery: 1, TimerModel: "Manual", TimerHook: "tick"}
+	generated.Models = []Model{{
+		Name: "Manual", Enabled: true,
+		AvailableHooks: []Hook{{ID: "tick", Symbol: "manual_tick"}},
+		Inputs:         []Data{{Name: "INPUT", Path: "manual.input", Type: "float64", Address: &input}},
+		Outputs:        []Data{{Name: "OUTPUT", Path: "manual.output", Type: "float64", Address: &output}},
+		States:         []Data{{Name: "STATE", Path: "manual.state", Type: "float64", Address: &state}},
+		Hooks: []HookSelection{
+			{ID: "tick", Phase: "entry", Action: "write", Data: []string{"manual.input"}},
+			{ID: "tick", Phase: "return", Action: "read", Data: []string{"manual.output", "manual.state"}},
+		},
+	}}
+	config, err := CompileConfiguration(generated, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.TimerSymbol != "manual_tick" || len(config.Writes) != 1 || len(config.Reads) != 1 {
+		t.Fatalf("manual configuration = %#v", config)
+	}
+	if config.Writes[0].Signals[0].Addr != strconv.FormatUint(input, 16) || config.Reads[0].Signals[1].Addr != strconv.FormatUint(state, 16) {
+		t.Fatalf("custom addresses were not preserved: %#v", config)
+	}
+}
+
+func TestCompileConfigurationRejectsManualPostOutputsAndInvalidCustomData(t *testing.T) {
+	binary, addresses := manualFixture(t)
+	input := addresses["manual_input"]
+	m := &Manifest{Version: 1, Artifact: Artifact{BuildID: mustFingerprint(t, binary)}, Settings: Settings{Cycles: 1, SampleEvery: 1, TimerModel: "Manual", TimerHook: "tick"}, Models: []Model{{
+		Name: "Manual", Enabled: true, AvailableHooks: []Hook{{ID: "tick", Symbol: "manual_tick"}},
+		Inputs: []Data{{Name: "", Path: "manual.input", Type: "float32", Address: &input}},
+		Hooks: []HookSelection{
+			{ID: "tick", Phase: "post_outputs", Action: "read", Data: []string{"manual.input"}},
+			{ID: "tick", Phase: "return", Action: "read", Data: []string{"manual.input"}},
+		},
+	}}}
+	_, err := CompileConfiguration(m, binary)
+	if err == nil {
+		t.Fatal("expected manual validation error")
+	}
+	for _, want := range []string{"post_outputs is only available", "has type \"float32\""} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
+func mustFingerprint(t *testing.T, binary string) string {
+	t.Helper()
+	fingerprint, err := fingerprint(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fingerprint
 }
 
 func TestFixedStages(t *testing.T) {

@@ -38,7 +38,7 @@ func usage() {
 
 func runGenerate(args []string) error {
 	fs := flag.NewFlagSet("generate", flag.ExitOnError)
-	binary := fs.String("binary", "", "Simulink-generated ELF executable")
+	binary := fs.String("binary", "", "target ELF executable")
 	output := fs.String("output", "", "output YAML manifest")
 	_ = fs.Parse(args)
 	if *binary == "" || *output == "" {
@@ -62,7 +62,7 @@ func runGenerate(args []string) error {
 func runCompile(args []string) error {
 	fs := flag.NewFlagSet("compile", flag.ExitOnError)
 	manifestPath := fs.String("manifest", "", "user-edited River YAML manifest")
-	binary := fs.String("binary", "", "target Simulink-generated ELF executable")
+	binary := fs.String("binary", "", "target ELF executable")
 	output := fs.String("output", "", "output simulator JSON configuration")
 	_ = fs.Parse(args)
 	if *manifestPath == "" || *binary == "" || *output == "" {

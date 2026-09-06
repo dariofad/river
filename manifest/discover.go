@@ -5,7 +5,6 @@ import (
 	"debug/dwarf"
 	"debug/elf"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -51,8 +50,13 @@ func Generate(binary string) (*Manifest, []string, error) {
 	m := &Manifest{
 		Version:  1,
 		Artifact: Artifact{Binary: binary, BuildID: d.BuildID},
-		Settings: Settings{SampleEvery: 1, TimerModel: names[0]},
+		Settings: Settings{SampleEvery: 1},
 	}
+	if len(names) == 0 {
+		return m, []string{"no Simulink model was discovered; define models, available hooks, timer_model, timer_hook, and data manually"}, nil
+	}
+	m.Settings.TimerModel = names[0]
+	m.Settings.TimerHook = "step"
 	for _, name := range names {
 		model := d.Models[name].Manifest
 		// The simulator JSON payload has one global signal namespace. Leave
@@ -76,15 +80,19 @@ func inspect(binary string) (*discovery, error) {
 		return nil, fmt.Errorf("open ELF: %w", err)
 	}
 	defer ef.Close()
-	dw, err := ef.DWARF()
-	if err != nil {
-		return nil, fmt.Errorf("read DWARF (build the model unstripped with -g): %w", err)
-	}
+	out := &discovery{BuildID: buildID, Models: make(map[string]*discoveredModel)}
 	funcs, err := modelFunctions(ef)
 	if err != nil {
-		return nil, err
+		// A fully manual manifest only needs symbols when it is compiled. Let
+		// generation still provide the binary fingerprint and an empty skeleton.
+		return out, nil
 	}
-	out := &discovery{BuildID: buildID, Models: make(map[string]*discoveredModel)}
+	dw, err := ef.DWARF()
+	if err != nil {
+		// DWARF is needed for Simulink data discovery, but not for a manual
+		// address-based manifest.
+		return out, nil
+	}
 	r := dw.Reader()
 	for {
 		e, err := r.Next()
@@ -114,9 +122,6 @@ func inspect(binary string) (*discovery, error) {
 		}
 		dm := buildModel(name, class, funcs[name])
 		out.Models[name] = dm
-	}
-	if len(out.Models) == 0 {
-		return nil, errors.New("no Simulink C++ model class with step(), inputs, or outputs found")
 	}
 	if err := addModelInstances(dw, ef, out); err != nil {
 		return nil, err

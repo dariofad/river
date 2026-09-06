@@ -36,10 +36,9 @@ func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, 
 		return nil, fmt.Errorf("open ELF: %w", err)
 	}
 	defer ef.Close()
-	dw, err := ef.DWARF()
-	if err != nil {
-		return nil, fmt.Errorf("read DWARF (build the model unstripped with -g): %w", err)
-	}
+	// DWARF is only necessary for discovered data and the Simulink-specific
+	// post_outputs phase. A fully manual manifest can compile from ELF symbols.
+	dw, _ := ef.DWARF()
 
 	config := &my_types.Configuration{ModelPath: absolute, MinorToMajorRatio: strconv.FormatUint(uint64(m.Settings.SampleEvery), 10), NofCycles: strconv.FormatUint(uint64(m.Settings.Cycles), 10), Reads: []my_types.Group{}, Writes: []my_types.Group{}}
 	var problems []string
@@ -63,24 +62,29 @@ func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, 
 		}
 		enabledModels[configured.Name] = true
 		dm := d.Models[configured.Name]
-		if dm == nil {
-			problems = append(problems, fmt.Sprintf("model %q is not present in the target ELF", configured.Name))
-			continue
-		}
-		step, err := findFunctionSymbol(ef, dm.Funcs["step"])
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("model %q: %v", configured.Name, err))
-			continue
-		}
-
-		instanceAddress, addressOK := uint64(0), len(dm.InstanceAddresses) == 1
-		if !addressOK {
-			problems = append(problems, fmt.Sprintf("model %q must have exactly one statically addressable instance; found %d", configured.Name, len(dm.InstanceAddresses)))
-		} else {
-			instanceAddress = dm.InstanceAddresses[0]
-		}
 		catalog := buildDataCatalog(configured, &problems)
 		hooks := buildHookCatalog(configured, &problems)
+		requiresDiscoveredData := modelUsesDiscoveredData(configured, catalog)
+		instanceAddress, stepAddress := uint64(0), uint64(0)
+		addressOK := false
+		if requiresDiscoveredData {
+			if dm == nil {
+				problems = append(problems, fmt.Sprintf("model %q uses discovered data but is not present in the target ELF", configured.Name))
+			} else {
+				step, err := findFunctionSymbol(ef, dm.Funcs["step"])
+				if err != nil {
+					problems = append(problems, fmt.Sprintf("model %q: %v", configured.Name, err))
+				} else {
+					stepAddress = step.Value
+				}
+				addressOK = len(dm.InstanceAddresses) == 1
+				if !addressOK {
+					problems = append(problems, fmt.Sprintf("model %q must have exactly one statically addressable instance; found %d", configured.Name, len(dm.InstanceAddresses)))
+				} else {
+					instanceAddress = dm.InstanceAddresses[0]
+				}
+			}
+		}
 		seenSelections := make(map[string]bool)
 		for _, selected := range configured.Hooks {
 			key := selected.ID + "\x00" + selected.Phase + "\x00" + selected.Action
@@ -101,7 +105,7 @@ func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, 
 				problems = append(problems, fmt.Sprintf("model %q %s hook: unknown hook %q", configured.Name, selected.Action, selected.ID))
 				continue
 			}
-			symbol, offset, err := compileHook(ef, dw, dm, hook.ID, selected.Phase, selected.Offset, dm.Manifest.Outputs)
+			symbol, offset, err := compileHook(ef, dw, dm, *hook, selected.Phase, selected.Offset)
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("model %q %s hook %q at %s: %v", configured.Name, selected.Action, selected.ID, selected.Phase, err))
 				continue
@@ -110,7 +114,7 @@ func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, 
 				problems = append(problems, fmt.Sprintf("model %q %s hook %q has no data", configured.Name, selected.Action, selected.ID))
 				continue
 			}
-			signals := compileSelection(ef, selected, catalog, dm, instanceAddress, addressOK, step.Value, &problems)
+			signals := compileSelection(ef, selected, catalog, dm, instanceAddress, addressOK, stepAddress, &problems)
 			for _, signal := range signals {
 				if selected.Action == "read" {
 					checkDuplicateName(readNames, signal.Name, configured.Name, "read", &problems)
@@ -135,16 +139,36 @@ func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, 
 	if len(enabledModels) == 0 {
 		problems = append(problems, "manifest does not enable any models")
 	}
-	timerModel := d.Models[m.Settings.TimerModel]
+	timerHook := m.Settings.TimerHook
+	if timerHook == "" {
+		timerHook = "step"
+	}
+	var timerManifestModel *Model
+	for i := range m.Models {
+		if m.Models[i].Name == m.Settings.TimerModel {
+			timerManifestModel = &m.Models[i]
+			break
+		}
+	}
 	switch {
 	case m.Settings.TimerModel == "":
 		problems = append(problems, "settings.timer_model is required")
 	case !enabledModels[m.Settings.TimerModel]:
 		problems = append(problems, fmt.Sprintf("timer model %q is not enabled", m.Settings.TimerModel))
-	case timerModel == nil:
-		problems = append(problems, fmt.Sprintf("timer model %q is not present in the target ELF", m.Settings.TimerModel))
+	case timerManifestModel == nil:
+		problems = append(problems, fmt.Sprintf("timer model %q is not declared", m.Settings.TimerModel))
 	default:
-		config.TimerSymbol = timerModel.Funcs["step"]
+		hooks := buildHookCatalog(*timerManifestModel, &problems)
+		hook := hooks[timerHook]
+		if hook == nil {
+			problems = append(problems, fmt.Sprintf("timer hook %q is not available for model %q", timerHook, m.Settings.TimerModel))
+		} else if symbol, err := resolveHookSymbol(d.Models[m.Settings.TimerModel], *hook); err != nil {
+			problems = append(problems, fmt.Sprintf("timer model %q: %v", m.Settings.TimerModel, err))
+		} else if _, err := findFunctionSymbol(ef, symbol); err != nil {
+			problems = append(problems, fmt.Sprintf("timer model %q: %v", m.Settings.TimerModel, err))
+		} else {
+			config.TimerSymbol = symbol
+		}
 	}
 	if readCount > simulatorSignalLimit {
 		problems = append(problems, fmt.Sprintf("configuration has %d read signals; the simulator supports at most %d", readCount, simulatorSignalLimit))
@@ -193,16 +217,30 @@ func buildHookCatalog(model Model, problems *[]string) map[string]*Hook {
 	return catalog
 }
 
-func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, function, phase string, customOffset *uint64, outputs []Data) (string, uint64, error) {
-	if function == "" {
+func resolveHookSymbol(dm *discoveredModel, hook Hook) (string, error) {
+	if hook.Symbol != "" {
+		return hook.Symbol, nil
+	}
+	if dm == nil {
+		return "", fmt.Errorf("hook %q needs an explicit symbol for a manually defined model", hook.ID)
+	}
+	symbol := dm.Funcs[hook.ID]
+	if symbol == "" {
+		return "", fmt.Errorf("function %q is missing from the target ELF", hook.ID)
+	}
+	return symbol, nil
+}
+
+func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, hook Hook, phase string, customOffset *uint64) (string, uint64, error) {
+	if hook.ID == "" {
 		return "", 0, errors.New("function is required")
 	}
 	if phase == "" {
 		return "", 0, errors.New("phase is required")
 	}
-	symbol := dm.Funcs[function]
-	if symbol == "" {
-		return "", 0, fmt.Errorf("function %q is missing from the target ELF", function)
+	symbol, err := resolveHookSymbol(dm, hook)
+	if err != nil {
+		return "", 0, err
 	}
 	boundaries, returns, err := functionInstructions(ef, symbol)
 	if err != nil {
@@ -219,25 +257,25 @@ func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, function, ph
 			return "", 0, errors.New("offset is only valid for the custom phase")
 		}
 		if len(returns) == 0 {
-			return "", 0, fmt.Errorf("function %q has no return instruction", function)
+			return "", 0, fmt.Errorf("function %q has no return instruction", hook.ID)
 		}
 		return symbol, returns[len(returns)-1], nil
 	case "post_outputs":
 		if customOffset != nil {
 			return "", 0, errors.New("offset is only valid for the custom phase")
 		}
-		if function != "step" {
+		if dm == nil || hook.ID != "step" || hook.Symbol != "" || dw == nil {
 			return "", 0, fmt.Errorf("post_outputs is only available for step")
 		}
 		functionSymbol, err := findFunctionSymbol(ef, symbol)
 		if err != nil {
 			return "", 0, err
 		}
-		source, lines, err := functionSource(dw, functionSymbol, outputs)
+		source, lines, err := functionSource(dw, functionSymbol, dm.Manifest.Outputs)
 		if err != nil {
 			return "", 0, fmt.Errorf("locate post-output source site: %w", err)
 		}
-		offset, ok := postOutputOffset(source, lines, functionSymbol, outputs)
+		offset, ok := postOutputOffset(source, lines, functionSymbol, dm.Manifest.Outputs)
 		if !ok || !boundaries[offset] {
 			return "", 0, errors.New("cannot resolve a post-output instruction boundary")
 		}
@@ -255,6 +293,17 @@ func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, function, ph
 	}
 }
 
+func modelUsesDiscoveredData(model Model, catalog map[string]Data) bool {
+	for _, hook := range model.Hooks {
+		for _, path := range hook.Data {
+			if item, ok := catalog[path]; ok && item.Address == nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func compileSelection(ef *elf.File, selected HookSelection, catalog map[string]Data, dm *discoveredModel, instanceAddress uint64, addressOK bool, stepAddress uint64, problems *[]string) []my_types.Signal {
 	seenPaths := make(map[string]bool, len(selected.Data))
 	signals := make([]my_types.Signal, 0, len(selected.Data))
@@ -269,17 +318,8 @@ func compileSelection(ef *elf.File, selected HookSelection, catalog map[string]D
 			*problems = append(*problems, fmt.Sprintf("%s hook %q references unknown data path %q", selected.Action, selected.ID, path))
 			continue
 		}
-		if !item.Supported {
+		if item.Address == nil && !item.Supported {
 			*problems = append(*problems, fmt.Sprintf("data %q is unsupported: %s", item.Path, item.Reason))
-			continue
-		}
-		discovered, ok := dm.Data[item.Path]
-		if !ok {
-			*problems = append(*problems, fmt.Sprintf("data path %q is stale or was edited", item.Path))
-			continue
-		}
-		if discovered.Type.Name != item.Type {
-			*problems = append(*problems, fmt.Sprintf("type for %q changed from %q to %q", item.Path, item.Type, discovered.Type.Name))
 			continue
 		}
 		if item.Type != "float64" {
@@ -290,10 +330,29 @@ func compileSelection(ef *elf.File, selected HookSelection, catalog map[string]D
 			*problems = append(*problems, fmt.Sprintf("data %q has an empty name", item.Path))
 			continue
 		}
-		address, ok := configurationAddress(discovered, instanceAddress, addressOK, stepAddress)
-		if !ok {
-			*problems = append(*problems, fmt.Sprintf("cannot resolve address for %q", item.Path))
-			continue
+		address := uint64(0)
+		if item.Address != nil {
+			address = *item.Address
+		} else {
+			if dm == nil {
+				*problems = append(*problems, fmt.Sprintf("data path %q requires Simulink DWARF discovery", item.Path))
+				continue
+			}
+			discovered, ok := dm.Data[item.Path]
+			if !ok {
+				*problems = append(*problems, fmt.Sprintf("data path %q is stale or was edited", item.Path))
+				continue
+			}
+			if discovered.Type.Name != item.Type {
+				*problems = append(*problems, fmt.Sprintf("type for %q changed from %q to %q", item.Path, item.Type, discovered.Type.Name))
+				continue
+			}
+			var addressResolved bool
+			address, addressResolved = configurationAddress(discovered, instanceAddress, addressOK, stepAddress)
+			if !addressResolved {
+				*problems = append(*problems, fmt.Sprintf("cannot resolve address for %q", item.Path))
+				continue
+			}
 		}
 		if err := validateDataRange(ef, address, 8, selected.Action == "write"); err != nil {
 			*problems = append(*problems, fmt.Sprintf("data %q: %v", item.Path, err))

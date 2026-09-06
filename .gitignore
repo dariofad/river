@@ -49,7 +49,8 @@ probe_bpf*
 riverprobe_bpf*
 
 # modules' binaries
-river
+/river
+/river-manifest
 
 # vmlinux
 vmlinux.h
