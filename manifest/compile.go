@@ -105,7 +105,7 @@ func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, 
 				problems = append(problems, fmt.Sprintf("model %q %s hook: unknown hook %q", configured.Name, selected.Action, selected.ID))
 				continue
 			}
-			symbol, offset, err := compileHook(ef, dw, dm, *hook, selected.Phase, selected.Offset)
+			symbol, offset, retprobe, err := compileHook(ef, dw, dm, *hook, selected.Phase, selected.Offset)
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("model %q %s hook %q at %s: %v", configured.Name, selected.Action, selected.ID, selected.Phase, err))
 				continue
@@ -127,7 +127,7 @@ func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, 
 			if len(signals) == 0 {
 				continue
 			}
-			group := my_types.Group{Symbol: symbol, Offset: strconv.FormatUint(offset, 10), Signals: signals}
+			group := my_types.Group{Symbol: symbol, Offset: strconv.FormatUint(offset, 10), Retprobe: retprobe, Signals: signals}
 			if selected.Action == "read" {
 				config.Reads = append(config.Reads, group)
 			} else {
@@ -231,65 +231,67 @@ func resolveHookSymbol(dm *discoveredModel, hook Hook) (string, error) {
 	return symbol, nil
 }
 
-func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, hook Hook, phase string, customOffset *uint64) (string, uint64, error) {
+func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, hook Hook, phase string, customOffset *uint64) (string, uint64, bool, error) {
 	if hook.ID == "" {
-		return "", 0, errors.New("function is required")
+		return "", 0, false, errors.New("function is required")
 	}
 	if phase == "" {
-		return "", 0, errors.New("phase is required")
+		return "", 0, false, errors.New("phase is required")
 	}
 	symbol, err := resolveHookSymbol(dm, hook)
 	if err != nil {
-		return "", 0, err
+		return "", 0, false, err
 	}
-	boundaries, returns, err := functionInstructions(ef, symbol)
-	if err != nil {
-		return "", 0, err
+	if _, err := findFunctionSymbol(ef, symbol); err != nil {
+		return "", 0, false, err
 	}
 	switch phase {
 	case "entry":
 		if customOffset != nil {
-			return "", 0, errors.New("offset is only valid for the custom phase")
+			return "", 0, false, errors.New("offset is only valid for the custom phase")
 		}
-		return symbol, 0, nil
+		return symbol, 0, false, nil
 	case "return":
 		if customOffset != nil {
-			return "", 0, errors.New("offset is only valid for the custom phase")
+			return "", 0, false, errors.New("offset is only valid for the custom phase")
 		}
-		if len(returns) == 0 {
-			return "", 0, fmt.Errorf("function %q has no return instruction", hook.ID)
-		}
-		return symbol, returns[len(returns)-1], nil
+		return symbol, 0, true, nil
+	}
+	boundaries, _, err := functionInstructions(ef, symbol)
+	if err != nil {
+		return "", 0, false, err
+	}
+	switch phase {
 	case "post_outputs":
 		if customOffset != nil {
-			return "", 0, errors.New("offset is only valid for the custom phase")
+			return "", 0, false, errors.New("offset is only valid for the custom phase")
 		}
 		if dm == nil || hook.ID != "step" || hook.Symbol != "" || dw == nil {
-			return "", 0, fmt.Errorf("post_outputs is only available for step")
+			return "", 0, false, fmt.Errorf("post_outputs is only available for step")
 		}
 		functionSymbol, err := findFunctionSymbol(ef, symbol)
 		if err != nil {
-			return "", 0, err
+			return "", 0, false, err
 		}
 		source, lines, err := functionSource(dw, functionSymbol, dm.Manifest.Outputs)
 		if err != nil {
-			return "", 0, fmt.Errorf("locate post-output source site: %w", err)
+			return "", 0, false, fmt.Errorf("locate post-output source site: %w", err)
 		}
 		offset, ok := postOutputOffset(source, lines, functionSymbol, dm.Manifest.Outputs)
 		if !ok || !boundaries[offset] {
-			return "", 0, errors.New("cannot resolve a post-output instruction boundary")
+			return "", 0, false, errors.New("cannot resolve a post-output instruction boundary")
 		}
-		return symbol, offset, nil
+		return symbol, offset, false, nil
 	case "custom":
 		if customOffset == nil {
-			return "", 0, errors.New("custom phase requires an offset")
+			return "", 0, false, errors.New("custom phase requires an offset")
 		}
 		if !boundaries[*customOffset] {
-			return "", 0, fmt.Errorf("offset %d is not an instruction boundary within %s", *customOffset, symbol)
+			return "", 0, false, fmt.Errorf("offset %d is not an instruction boundary within %s", *customOffset, symbol)
 		}
-		return symbol, *customOffset, nil
+		return symbol, *customOffset, false, nil
 	default:
-		return "", 0, fmt.Errorf("unknown hook phase %q", phase)
+		return "", 0, false, fmt.Errorf("unknown hook phase %q", phase)
 	}
 }
 

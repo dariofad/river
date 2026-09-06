@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/dariofad/river/my_types"
 )
 
 func TestDecodeInstructionArchitectures(t *testing.T) {
@@ -383,7 +385,7 @@ func TestCompileConfigurationSupportsIndependentHookSelectionsAndStates(t *testi
 	if len(config.Writes) != 1 || len(config.Writes[0].Signals) != 2 {
 		t.Fatalf("unexpected writes: %#v", config.Writes)
 	}
-	if len(config.Reads) != 2 || config.Reads[0].Offset != "0" || len(config.Reads[1].Signals) != 2 {
+	if len(config.Reads) != 2 || config.Reads[0].Offset != "0" || config.Reads[0].Retprobe || config.Reads[1].Offset != "0" || !config.Reads[1].Retprobe || len(config.Reads[1].Signals) != 2 {
 		t.Fatalf("unexpected reads: %#v", config.Reads)
 	}
 }
@@ -538,5 +540,23 @@ func TestWriteConfigurationIsSimulatorCompatible(t *testing.T) {
 		if !strings.Contains(string(raw), `"`+key+`"`) {
 			t.Errorf("JSON is missing simulator key %q: %s", key, raw)
 		}
+	}
+}
+
+func TestWriteConfigurationEncodesRetprobe(t *testing.T) {
+	config := &my_types.Configuration{Reads: []my_types.Group{{
+		Symbol: "step", Offset: "0", Retprobe: true,
+		Signals: []my_types.Signal{{Name: "output", Type: "float64", Addr: "4048"}},
+	}}}
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := WriteConfiguration(path, config); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"RETPROBE": true`) {
+		t.Fatalf("retprobe marker is missing: %s", raw)
 	}
 }
