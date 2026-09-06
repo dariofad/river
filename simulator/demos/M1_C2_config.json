@@ -6,12 +6,12 @@
   "WRITES": [
     {
       "SYMBOL": "_ZN6egoCar4stepEv",
-      "OFFSET": "308",
+      "OFFSET": "0x308",
       "SIGNALS": [
         {
           "NAME": "d_rel",
           "TYPE": "float64",
-          "ADDR": "30328"
+          "ADDR": "0x30328"
         }
       ]
     }
@@ -19,22 +19,22 @@
   "READS": [
     {
       "SYMBOL": "_ZN6egoCar4stepEv",
-      "OFFSET": "3936",
+      "OFFSET": "0x3936",
       "SIGNALS": [
         {
           "NAME": "DRELv1",
           "TYPE": "float64",
-          "ADDR": "30328"
+          "ADDR": "0x30328"
         },
         {
           "NAME": "AEGO",
           "TYPE": "float64",
-          "ADDR": "30340"
+          "ADDR": "0x30340"
         },
         {
           "NAME": "VEGO",
           "TYPE": "float64",
-          "ADDR": "30338"
+          "ADDR": "0x30338"
         }
       ]
     }

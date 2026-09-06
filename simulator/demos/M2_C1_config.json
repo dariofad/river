@@ -6,17 +6,17 @@
   "WRITES": [
     {
       "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "80",
+      "OFFSET": "0x80",
       "SIGNALS": [
         {
           "NAME": "x",
           "TYPE": "float64",
-          "ADDR": "20020"
+          "ADDR": "0x20020"
         },
         {
           "NAME": "y",
           "TYPE": "float64",
-          "ADDR": "20028"
+          "ADDR": "0x20028"
         }
       ]
     }
@@ -24,43 +24,43 @@
   "READS": [
     {
       "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "80",
+      "OFFSET": "0x80",
       "SIGNALS": [
         {
           "NAME": "Xr0",
           "TYPE": "float64",
-          "ADDR": "20020"
+          "ADDR": "0x20020"
         },
         {
           "NAME": "Yr0",
           "TYPE": "float64",
-          "ADDR": "20028"
+          "ADDR": "0x20028"
         }
       ]
     },
     {
       "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "92",
+      "OFFSET": "0x92",
       "SIGNALS": [
         {
           "NAME": "Xr1",
           "TYPE": "float64",
-          "ADDR": "20020"
+          "ADDR": "0x20020"
         },
         {
           "NAME": "Yr1",
           "TYPE": "float64",
-          "ADDR": "20028"
+          "ADDR": "0x20028"
         },
         {
           "NAME": "RESr1",
           "TYPE": "float64",
-          "ADDR": "20030"
+          "ADDR": "0x20030"
         },
         {
           "NAME": "MOFFSETr1",
           "TYPE": "float64",
-          "ADDR": "20018"
+          "ADDR": "0x20018"
         }
       ]
     }

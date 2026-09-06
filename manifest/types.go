@@ -1,5 +1,36 @@
 package manifest
 
+import (
+	"fmt"
+	"strconv"
+
+	"gopkg.in/yaml.v3"
+)
+
+// HexUint64 keeps editable binary locations unambiguous in YAML.
+type HexUint64 uint64
+
+func (v HexUint64) MarshalYAML() (interface{}, error) {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: fmt.Sprintf("0x%x", uint64(v))}, nil
+}
+
+func (v *HexUint64) UnmarshalYAML(node *yaml.Node) error {
+	if node.Tag == "!!int" {
+		var raw uint64
+		if err := node.Decode(&raw); err != nil {
+			return err
+		}
+		*v = HexUint64(raw)
+		return nil
+	}
+	parsed, err := strconv.ParseUint(node.Value, 0, 64)
+	if err != nil {
+		return err
+	}
+	*v = HexUint64(parsed)
+	return nil
+}
+
 // Manifest is the human-editable contract between river-manifest and River.
 // It keeps data identities and hook intent semantic. ELF symbols, addresses,
 // and uprobe offsets are resolved only when it is compiled to JSON.
@@ -39,11 +70,11 @@ type Model struct {
 // action, except custom selections which are distinguished by offset. Offset
 // is only valid for the custom phase.
 type HookSelection struct {
-	ID     string   `yaml:"id" json:"id"`
-	Phase  string   `yaml:"phase" json:"phase"`
-	Offset *uint64  `yaml:"offset,omitempty" json:"offset,omitempty"`
-	Action string   `yaml:"action" json:"action"`
-	Data   []string `yaml:"data" json:"data"`
+	ID     string     `yaml:"id" json:"id"`
+	Phase  string     `yaml:"phase" json:"phase"`
+	Offset *HexUint64 `yaml:"offset,omitempty" json:"offset,omitempty"`
+	Action string     `yaml:"action" json:"action"`
+	Data   []string   `yaml:"data" json:"data"`
 }
 
 type Hook struct {
@@ -60,7 +91,7 @@ type Data struct {
 	Reason    string `yaml:"reason,omitempty" json:"reason,omitempty"`
 	// Address makes this a user-defined datum. It is an ELF virtual address,
 	// resolved directly at compilation instead of through DWARF discovery.
-	Address *uint64 `yaml:"address,omitempty" json:"address,omitempty"`
+	Address *HexUint64 `yaml:"address,omitempty" json:"address,omitempty"`
 }
 
 type RuntimeData struct {

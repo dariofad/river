@@ -89,7 +89,7 @@ func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, 
 		for _, selected := range configured.Hooks {
 			key := selected.ID + "\x00" + selected.Phase + "\x00" + selected.Action
 			if selected.Phase == "custom" && selected.Offset != nil {
-				key += "\x00" + strconv.FormatUint(*selected.Offset, 10)
+				key += "\x00" + strconv.FormatUint(uint64(*selected.Offset), 10)
 			}
 			if seenSelections[key] {
 				problems = append(problems, fmt.Sprintf("model %q selects hook %q at %s for %s more than once", configured.Name, selected.ID, selected.Phase, selected.Action))
@@ -127,7 +127,7 @@ func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, 
 			if len(signals) == 0 {
 				continue
 			}
-			group := my_types.Group{Symbol: symbol, Offset: strconv.FormatUint(offset, 10), Retprobe: retprobe, Signals: signals}
+			group := my_types.Group{Symbol: symbol, Offset: fmt.Sprintf("0x%x", offset), Retprobe: retprobe, Signals: signals}
 			if selected.Action == "read" {
 				config.Reads = append(config.Reads, group)
 			} else {
@@ -231,7 +231,7 @@ func resolveHookSymbol(dm *discoveredModel, hook Hook) (string, error) {
 	return symbol, nil
 }
 
-func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, hook Hook, phase string, customOffset *uint64) (string, uint64, bool, error) {
+func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, hook Hook, phase string, customOffset *HexUint64) (string, uint64, bool, error) {
 	if hook.ID == "" {
 		return "", 0, false, errors.New("function is required")
 	}
@@ -286,10 +286,10 @@ func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, hook Hook, p
 		if customOffset == nil {
 			return "", 0, false, errors.New("custom phase requires an offset")
 		}
-		if !boundaries[*customOffset] {
+		if !boundaries[uint64(*customOffset)] {
 			return "", 0, false, fmt.Errorf("offset %d is not an instruction boundary within %s", *customOffset, symbol)
 		}
-		return symbol, *customOffset, false, nil
+		return symbol, uint64(*customOffset), false, nil
 	default:
 		return "", 0, false, fmt.Errorf("unknown hook phase %q", phase)
 	}
@@ -334,7 +334,7 @@ func compileSelection(ef *elf.File, selected HookSelection, catalog map[string]D
 		}
 		address := uint64(0)
 		if item.Address != nil {
-			address = *item.Address
+			address = uint64(*item.Address)
 		} else {
 			if dm == nil {
 				*problems = append(*problems, fmt.Sprintf("data path %q requires Simulink DWARF discovery", item.Path))
@@ -360,7 +360,7 @@ func compileSelection(ef *elf.File, selected HookSelection, catalog map[string]D
 			*problems = append(*problems, fmt.Sprintf("data %q: %v", item.Path, err))
 			continue
 		}
-		signals = append(signals, my_types.Signal{Name: item.Name, Type: item.Type, Addr: strconv.FormatUint(address, 16)})
+		signals = append(signals, my_types.Signal{Name: item.Name, Type: item.Type, Addr: fmt.Sprintf("0x%x", address)})
 	}
 	return signals
 }
