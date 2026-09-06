@@ -12,7 +12,7 @@ The templates describe the binaries available in the companion `sim2cpp`
 repository. Update `MODEL_PATH`, symbols, offsets, and addresses whenever you
 use a different build of a model.
 
-For a new unstripped C++ model, `river-manifest` can discover the model and
+For a new C++ model, `river-manifest` can discover a Simulink model and
 produce an editable YAML manifest:
 
 ```bash
@@ -28,7 +28,7 @@ output assignment. If that proof is unavailable it conservatively uses
 `step.return` and emits a warning. States are available but not selected by
 default. Each model owns its own
 `available_hooks` and `hooks`: hook IDs are therefore model-local. Review
-`cycles`, `sample_every`, `timer_model`, data names, and hook selections. The
+`cycles`, `sample_every`, `timer_model`, `timer_hook`, data names, and hook selections. The
 compiler resolves each selected hook's phase to the target binary's symbol and
 instruction offset, so the manifest remains independent of its machine code.
 
@@ -82,6 +82,59 @@ decimal `offset`; compilation verifies that it is an instruction boundary:
   action: read
   data: [ToyModel.ToyModel_Y.y]
 ```
+
+## Manual models and data
+
+When a binary is not recognized as a Simulink model, `generate` writes a
+fingerprinted skeleton and warns that its model definition must be supplied
+manually. Define each hook with its exact ELF function symbol and each custom
+data item with its ELF virtual address. Custom entries remain in the normal
+`inputs`, `outputs`, or `states` lists; `address` makes their location
+explicit. The runtime currently supports scalar `float64` data only.
+
+```yaml
+settings:
+  cycles: 100
+  sample_every: 1
+  timer_model: Controller
+  timer_hook: tick
+models:
+  - name: Controller
+    enabled: true
+    available_hooks:
+      - id: tick
+        symbol: controller_tick
+    inputs:
+      - name: SETPOINT
+        path: controller.setpoint
+        type: float64
+        address: 0x4040
+    outputs:
+      - name: VALUE
+        path: controller.value
+        type: float64
+        address: 0x4048
+    states:
+      - name: INTEGRAL
+        path: controller.integral
+        type: float64
+        address: 0x4050
+    hooks:
+      - id: tick
+        phase: entry
+        action: write
+        data: [controller.setpoint]
+      - id: tick
+        phase: return
+        action: read
+        data: [controller.value, controller.integral]
+```
+
+Custom hooks support `entry`, `return`, and `custom`; `post_outputs` needs
+Simulink DWARF/source information and is unavailable to manual hooks. Manual
+compilation does not require DWARF, but hook symbols must be available in the
+ELF. Addresses are validated against its loadable segments and writes require
+a writable segment.
 
 ## Address model and ASLR
 

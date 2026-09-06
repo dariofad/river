@@ -19,6 +19,9 @@ type Settings struct {
 	Cycles      uint32 `yaml:"cycles" json:"cycles"`
 	SampleEvery uint32 `yaml:"sample_every" json:"sample_every"`
 	TimerModel  string `yaml:"timer_model" json:"timer_model"`
+	// TimerHook identifies the available hook whose function advances the
+	// simulation clock. Empty retains the original `step` default.
+	TimerHook string `yaml:"timer_hook,omitempty" json:"timer_hook,omitempty"`
 }
 
 type Model struct {
@@ -44,7 +47,8 @@ type HookSelection struct {
 }
 
 type Hook struct {
-	ID string `yaml:"id" json:"id"`
+	ID     string `yaml:"id" json:"id"`
+	Symbol string `yaml:"symbol,omitempty" json:"symbol,omitempty"`
 }
 
 type Data struct {
@@ -54,6 +58,9 @@ type Data struct {
 	Type      string `yaml:"type" json:"type"`
 	Supported bool   `yaml:"supported" json:"supported"`
 	Reason    string `yaml:"reason,omitempty" json:"reason,omitempty"`
+	// Address makes this a user-defined datum. It is an ELF virtual address,
+	// resolved directly at compilation instead of through DWARF discovery.
+	Address *uint64 `yaml:"address,omitempty" json:"address,omitempty"`
 }
 
 type RuntimeData struct {
