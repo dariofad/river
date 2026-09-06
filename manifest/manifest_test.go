@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"debug/elf"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -227,7 +228,7 @@ func TestGenerateAndCompileConfiguration(t *testing.T) {
 	if config.Writes[0].Signals[0].Addr == config.Reads[0].Signals[1].Addr {
 		t.Fatal("input and output addresses must differ")
 	}
-	address, err := strconv.ParseUint(config.Writes[0].Signals[0].Addr, 16, 64)
+	address, err := strconv.ParseUint(config.Writes[0].Signals[0].Addr, 0, 64)
 	if err != nil || address < 0x1000 {
 		t.Fatalf("instance field lowered to member offset instead of ELF address: %q", config.Writes[0].Signals[0].Addr)
 	}
@@ -254,7 +255,7 @@ func TestGenerateManualSkeletonAndCompileCustomDataWithoutDWARF(t *testing.T) {
 	if len(generated.Models) != 0 || generated.Settings.TimerModel != "" || len(warnings) != 1 || !strings.Contains(warnings[0], "define models") {
 		t.Fatalf("manual skeleton = %#v, warnings = %#v", generated, warnings)
 	}
-	input, output, state := addresses["manual_input"], addresses["manual_output"], addresses["manual_state"]
+	input, output, state := HexUint64(addresses["manual_input"]), HexUint64(addresses["manual_output"]), HexUint64(addresses["manual_state"])
 	generated.Settings = Settings{Cycles: 4, SampleEvery: 1, TimerModel: "Manual", TimerHook: "tick"}
 	generated.Models = []Model{{
 		Name: "Manual", Enabled: true,
@@ -274,14 +275,14 @@ func TestGenerateManualSkeletonAndCompileCustomDataWithoutDWARF(t *testing.T) {
 	if config.TimerSymbol != "manual_tick" || len(config.Writes) != 1 || len(config.Reads) != 1 {
 		t.Fatalf("manual configuration = %#v", config)
 	}
-	if config.Writes[0].Signals[0].Addr != strconv.FormatUint(input, 16) || config.Reads[0].Signals[1].Addr != strconv.FormatUint(state, 16) {
+	if config.Writes[0].Signals[0].Addr != fmt.Sprintf("0x%x", input) || config.Reads[0].Signals[1].Addr != fmt.Sprintf("0x%x", state) {
 		t.Fatalf("custom addresses were not preserved: %#v", config)
 	}
 }
 
 func TestCompileConfigurationRejectsManualPostOutputsAndInvalidCustomData(t *testing.T) {
 	binary, addresses := manualFixture(t)
-	input := addresses["manual_input"]
+	input := HexUint64(addresses["manual_input"])
 	m := &Manifest{Version: 1, Artifact: Artifact{BuildID: mustFingerprint(t, binary)}, Settings: Settings{Cycles: 1, SampleEvery: 1, TimerModel: "Manual", TimerHook: "tick"}, Models: []Model{{
 		Name: "Manual", Enabled: true, AvailableHooks: []Hook{{ID: "tick", Symbol: "manual_tick"}},
 		Inputs: []Data{{Name: "", Path: "manual.input", Type: "float32", Address: &input}},
@@ -385,7 +386,7 @@ func TestCompileConfigurationSupportsIndependentHookSelectionsAndStates(t *testi
 	if len(config.Writes) != 1 || len(config.Writes[0].Signals) != 2 {
 		t.Fatalf("unexpected writes: %#v", config.Writes)
 	}
-	if len(config.Reads) != 2 || config.Reads[0].Offset != "0" || config.Reads[0].Retprobe || config.Reads[1].Offset != "0" || !config.Reads[1].Retprobe || len(config.Reads[1].Signals) != 2 {
+	if len(config.Reads) != 2 || config.Reads[0].Offset != "0x0" || config.Reads[0].Retprobe || config.Reads[1].Offset != "0x0" || !config.Reads[1].Retprobe || len(config.Reads[1].Signals) != 2 {
 		t.Fatalf("unexpected reads: %#v", config.Reads)
 	}
 }
@@ -396,12 +397,13 @@ func TestCompileConfigurationSupportsCustomHookOffset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	offset, err := strconv.ParseUint(baseline.Reads[0].Offset, 10, 64)
+	offset, err := strconv.ParseUint(baseline.Reads[0].Offset, 0, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
 	model := &m.Models[0]
-	model.Hooks = []HookSelection{{ID: "step", Phase: "custom", Offset: &offset, Action: "read", Data: []string{model.Outputs[0].Path}}}
+	customOffset := HexUint64(offset)
+	model.Hooks = []HookSelection{{ID: "step", Phase: "custom", Offset: &customOffset, Action: "read", Data: []string{model.Outputs[0].Path}}}
 	config, err := CompileConfiguration(m, binary)
 	if err != nil {
 		t.Fatal(err)
@@ -415,14 +417,14 @@ func TestCompileConfigurationSupportsCustomHookOffset(t *testing.T) {
 		t.Fatalf("expected missing custom offset error, got %v", err)
 	}
 
-	invalidOffset := uint64(1 << 30)
+	invalidOffset := HexUint64(1 << 30)
 	model.Hooks[0].Offset = &invalidOffset
 	if _, err := CompileConfiguration(m, binary); err == nil || !strings.Contains(err.Error(), "not an instruction boundary") {
 		t.Fatalf("expected invalid custom offset error, got %v", err)
 	}
 
 	model.Hooks[0].Phase = "entry"
-	model.Hooks[0].Offset = &offset
+	model.Hooks[0].Offset = &customOffset
 	if _, err := CompileConfiguration(m, binary); err == nil || !strings.Contains(err.Error(), "offset is only valid for the custom phase") {
 		t.Fatalf("expected non-custom offset error, got %v", err)
 	}

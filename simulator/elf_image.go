@@ -81,7 +81,7 @@ func configureRelocation(config my_types.Configuration) (*relocationConfig, erro
 		{kind: "write", groups: config.Writes, writable: true},
 	} {
 		for _, group := range item.groups {
-			offset, parseErr := strconv.ParseUint(group.Offset, 10, 64)
+			offset, parseErr := strconv.ParseUint(group.Offset, 0, 64)
 			if parseErr != nil {
 				return nil, fmt.Errorf("parse %s hook offset %q: %w", item.kind, group.Offset, parseErr)
 			}
@@ -93,7 +93,7 @@ func configureRelocation(config my_types.Configuration) (*relocationConfig, erro
 				return nil, fmt.Errorf("resolve %s hook %q: %w", item.kind, group.Symbol, hookErr)
 			}
 			for _, signal := range group.Signals {
-				address, parseErr := strconv.ParseUint(signal.Addr, 16, 64)
+				address, parseErr := strconv.ParseUint(signal.Addr, 0, 64)
 				if parseErr != nil {
 					return nil, fmt.Errorf("parse ELF address %q for %s signal %q: %w", signal.Addr, item.kind, signal.Name, parseErr)
 				}

@@ -6,17 +6,17 @@
   "WRITES": [
     {
       "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "74",
+      "OFFSET": "0x4a",
       "SIGNALS": [
         {
           "NAME": "x",
           "TYPE": "float64",
-          "ADDR": "4048"
+          "ADDR": "0x4048"
         },
         {
           "NAME": "y",
           "TYPE": "float64",
-          "ADDR": "4050"
+          "ADDR": "0x4050"
         }
       ]
     }
@@ -24,43 +24,43 @@
   "READS": [
     {
       "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "74",
+      "OFFSET": "0x4a",
       "SIGNALS": [
         {
           "NAME": "Xr0",
           "TYPE": "float64",
-          "ADDR": "4048"
+          "ADDR": "0x4048"
         },
         {
           "NAME": "Yr0",
           "TYPE": "float64",
-          "ADDR": "4050"
+          "ADDR": "0x4050"
         }
       ]
     },
     {
       "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "79",
+      "OFFSET": "0x4f",
       "SIGNALS": [
         {
           "NAME": "Xr1",
           "TYPE": "float64",
-          "ADDR": "4048"
+          "ADDR": "0x4048"
         },
         {
           "NAME": "Yr1",
           "TYPE": "float64",
-          "ADDR": "4050"
+          "ADDR": "0x4050"
         },
         {
           "NAME": "RESr1",
           "TYPE": "float64",
-          "ADDR": "4058"
+          "ADDR": "0x4058"
         },
         {
           "NAME": "MOFFSETr1",
           "TYPE": "float64",
-          "ADDR": "4040"
+          "ADDR": "0x4040"
         }
       ]
     }

@@ -363,7 +363,7 @@ func Start(
 		for _, group := range config.Reads {
 			cookie := uprobeCookie(group_base, len(group.Signals))
 			log.Printf("Read group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
-			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
+			offset, err = strconv.ParseUint(group.Offset, 0, 64)
 			if err != nil {
 				_ = abortStopped(binCmd)
 				log.Printf("Error converting uprobe offset: %s", err)
@@ -394,7 +394,7 @@ func Start(
 		for _, group := range config.Writes {
 			cookie := uprobeCookie(group_base, len(group.Signals))
 			log.Printf("Written group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
-			offset, err = strconv.ParseUint(group.Offset, 10, 64) // base 10
+			offset, err = strconv.ParseUint(group.Offset, 0, 64)
 			if err != nil {
 				_ = abortStopped(binCmd)
 				log.Printf("Error converting uprobe offset: %s", err)

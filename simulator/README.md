@@ -146,7 +146,8 @@ a writable segment.
 
 `ADDR` values are **ELF virtual addresses**, not addresses from a running
 process. They are stable for one particular model binary and are written as
-hexadecimal strings without a `0x` prefix, for example `"4048"`.
+prefixed hexadecimal strings, for example `"0x4048"`. Hook `OFFSET` values
+use the same representation.
 
 ASLR must remain enabled. At startup River launches the model in a temporary
 post-`exec` ptrace stop, reads `/proc/<pid>/maps`, calculates the load bias,
@@ -171,7 +172,7 @@ same rule.
       "SYMBOL": "hook_symbol",
       "OFFSET": "74",
       "SIGNALS": [
-        {"NAME": "INPUT", "TYPE": "float64", "ADDR": "4048"}
+        {"NAME": "INPUT", "TYPE": "float64", "ADDR": "0x4048"}
       ]
     }
   ],
@@ -180,7 +181,7 @@ same rule.
       "SYMBOL": "hook_symbol",
       "OFFSET": "79",
       "SIGNALS": [
-        {"NAME": "OUTPUT", "TYPE": "float64", "ADDR": "4058"}
+        {"NAME": "OUTPUT", "TYPE": "float64", "ADDR": "0x4058"}
       ]
     }
   ]

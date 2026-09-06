@@ -6,12 +6,12 @@
   "WRITES": [
     {
       "SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
-      "OFFSET": "0",
+      "OFFSET": "0x0",
       "SIGNALS": [
         {
           "NAME": "PedalAngle",
           "TYPE": "float64",
-          "ADDR": "14720"
+          "ADDR": "0x14720"
         }
       ]
     }
@@ -19,22 +19,22 @@
   "READS": [
     {
       "SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
-      "OFFSET": "4479",
+      "OFFSET": "0x117f",
       "SIGNALS": [
         {
           "NAME": "PANGLE",
           "TYPE": "float64",
-          "ADDR": "14720"
+          "ADDR": "0x14720"
         },
         {
           "NAME": "AF",
           "TYPE": "float64",
-          "ADDR": "14738"
+          "ADDR": "0x14738"
         },
         {
           "NAME": "CMODE",
           "TYPE": "float64",
-          "ADDR": "14740"
+          "ADDR": "0x14740"
         }
       ]
     }
