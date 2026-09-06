@@ -371,20 +371,22 @@ func Start(
 				wg.Done()
 				return
 			}
-			uprobe_r, err := modelExecutable.Uprobe(
-				group.Symbol,
-				probeObjs.UprobeRead,
-				&link.UprobeOptions{Offset: offset, Cookie: cookie, PID: targetPID},
-			)
+			options := &link.UprobeOptions{Offset: offset, Cookie: cookie, PID: targetPID}
+			var uprobeR link.Link
+			if group.Retprobe {
+				uprobeR, err = modelExecutable.Uretprobe(group.Symbol, probeObjs.UprobeRead, options)
+			} else {
+				uprobeR, err = modelExecutable.Uprobe(group.Symbol, probeObjs.UprobeRead, options)
+			}
 			if err != nil {
 				_ = abortStopped(binCmd)
-				log.Printf("Error setting the uprobe_read: %v", err)
+				log.Printf("Error setting the read probe: %v", err)
 				errCh <- err
 				wg.Done()
 				return
 			}
-			log.Print("Uprobe_read linked")
-			defer uprobe_r.Close()
+			log.Print("Read probe linked")
+			defer uprobeR.Close()
 			group_base += len(group.Signals)
 		}
 	}
@@ -400,20 +402,22 @@ func Start(
 				wg.Done()
 				return
 			}
-			uprobe_w, err := modelExecutable.Uprobe(
-				group.Symbol,
-				probeObjs.UprobeWrite,
-				&link.UprobeOptions{Offset: offset, Cookie: cookie, PID: targetPID},
-			)
+			options := &link.UprobeOptions{Offset: offset, Cookie: cookie, PID: targetPID}
+			var uprobeW link.Link
+			if group.Retprobe {
+				uprobeW, err = modelExecutable.Uretprobe(group.Symbol, probeObjs.UprobeWrite, options)
+			} else {
+				uprobeW, err = modelExecutable.Uprobe(group.Symbol, probeObjs.UprobeWrite, options)
+			}
 			if err != nil {
 				_ = abortStopped(binCmd)
-				log.Printf("Error setting the uprobe_write: %v", err)
+				log.Printf("Error setting the write probe: %v", err)
 				errCh <- err
 				wg.Done()
 				return
 			}
-			log.Print("Uprobe_write linked")
-			defer uprobe_w.Close()
+			log.Print("Write probe linked")
+			defer uprobeW.Close()
 			group_base += len(group.Signals)
 		}
 	}

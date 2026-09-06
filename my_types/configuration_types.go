@@ -7,9 +7,10 @@ type Signal struct {
 }
 
 type Group struct {
-	Symbol  string   `json:"SYMBOL"`
-	Offset  string   `json:"OFFSET"`
-	Signals []Signal `json:"SIGNALS"`
+	Symbol   string   `json:"SYMBOL"`
+	Offset   string   `json:"OFFSET"`
+	Retprobe bool     `json:"RETPROBE,omitempty"`
+	Signals  []Signal `json:"SIGNALS"`
 }
 
 type Configuration struct {

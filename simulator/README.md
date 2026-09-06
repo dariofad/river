@@ -72,8 +72,10 @@ available for reads and, when their ELF load segment is writable, writes. The
 simulator supports at most 16 signals in each direction.
 
 Use `entry`, `return`, or (for `step`) `post_outputs` to select a compiler-
-resolved phase. For a manually chosen probe site, use `phase: custom` and a
-decimal `offset`; compilation verifies that it is an instruction boundary:
+resolved phase. `return` compiles to a native uretprobe (`"RETPROBE": true`)
+at the function and therefore uses offset `0`. For a manually chosen probe
+site, use `phase: custom` and a decimal `offset`; compilation verifies that it
+is an instruction boundary:
 
 ```yaml
 - id: step
@@ -82,6 +84,10 @@ decimal `offset`; compilation verifies that it is an instruction boundary:
   action: read
   data: [ToyModel.ToyModel_Y.y]
 ```
+
+Hand-written JSON groups may use `"RETPROBE": true` to request the same
+native return probe. The field is omitted or `false` for normal uprobes; a
+retprobe must use offset `"0"`.
 
 ## Manual models and data
 

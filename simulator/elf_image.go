@@ -85,6 +85,9 @@ func configureRelocation(config my_types.Configuration) (*relocationConfig, erro
 			if parseErr != nil {
 				return nil, fmt.Errorf("parse %s hook offset %q: %w", item.kind, group.Offset, parseErr)
 			}
+			if group.Retprobe && offset != 0 {
+				return nil, fmt.Errorf("%s retprobe hook %q must use offset 0", item.kind, group.Symbol)
+			}
 			_, hookErr := image.hookAddress(group.Symbol, offset)
 			if hookErr != nil {
 				return nil, fmt.Errorf("resolve %s hook %q: %w", item.kind, group.Symbol, hookErr)
