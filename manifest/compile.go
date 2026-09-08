@@ -324,8 +324,8 @@ func compileSelection(ef *elf.File, selected HookSelection, catalog map[string]D
 			*problems = append(*problems, fmt.Sprintf("data %q is unsupported: %s", item.Path, item.Reason))
 			continue
 		}
-		if item.Type != "float64" {
-			*problems = append(*problems, fmt.Sprintf("data %q has type %q; the simulator supports only float64", item.Path, item.Type))
+		if _, err := my_types.ParseSignalType(item.Type); err != nil {
+			*problems = append(*problems, fmt.Sprintf("data %q: %v", item.Path, err))
 			continue
 		}
 		if item.Name == "" {

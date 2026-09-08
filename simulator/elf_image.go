@@ -93,11 +93,15 @@ func configureRelocation(config my_types.Configuration) (*relocationConfig, erro
 				return nil, fmt.Errorf("resolve %s hook %q: %w", item.kind, group.Symbol, hookErr)
 			}
 			for _, signal := range group.Signals {
+				typeInfo, typeErr := my_types.ParseSignalType(signal.Type)
+				if typeErr != nil {
+					return nil, fmt.Errorf("invalid type for %s signal %q: %w", item.kind, signal.Name, typeErr)
+				}
 				address, parseErr := strconv.ParseUint(signal.Addr, 0, 64)
 				if parseErr != nil {
 					return nil, fmt.Errorf("parse ELF address %q for %s signal %q: %w", signal.Addr, item.kind, signal.Name, parseErr)
 				}
-				if err := image.validateDataRange(address, 8, item.writable); err != nil {
+				if err := image.validateDataRange(address, uint64(typeInfo.Size), item.writable); err != nil {
 					return nil, fmt.Errorf("invalid address for %s signal %q: %w", item.kind, signal.Name, err)
 				}
 				relocation.signalAddresses = append(relocation.signalAddresses, address)

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dariofad/river/my_types"
 	"golang.org/x/arch/arm64/arm64asm"
 	"golang.org/x/arch/x86/x86asm"
 )
@@ -509,8 +510,8 @@ func simulatorPrimitiveOf(t dwarf.Type) (PrimitiveType, bool, string) {
 	if !ok {
 		return PrimitiveType{}, false, "only scalar primitive values are supported"
 	}
-	if primitive.Name != "float64" {
-		return primitive, false, "the simulator supports only scalar float64 values"
+	if _, err := my_types.ParseSignalType(primitive.Name); err != nil {
+		return primitive, false, err.Error()
 	}
 	return primitive, true, ""
 }
