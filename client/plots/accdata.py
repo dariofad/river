@@ -3,6 +3,7 @@ import sys
 from collections.abc import Awaitable
 
 import redis
+import msgpack
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 REDIS_HOST = "localhost"
@@ -33,7 +34,7 @@ def main() -> None:
         writer = csv.writer(file)
         try:
             r = redis.Redis(
-                host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True
+                host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=False
             )
             print(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
             all_records = r.zrange(ZSET_KEY, 0, -1, withscores=True)
@@ -47,7 +48,8 @@ def main() -> None:
             i = 0
             writer.writerow(["cycle", "real_drel", "ow_drel", "phi"])
             for member, _ in all_records:
-                record = list(map(float, member.split(",")))
+                decoded = msgpack.unpackb(member, raw=False)
+                record = [decoded["TIME"]] + decoded["VALUES"]
                 trajectory.append(record)
                 ow_drel.append(record[signals["DREL"]])
                 real_drel.append(

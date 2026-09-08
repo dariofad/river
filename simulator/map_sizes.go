@@ -16,7 +16,7 @@ func paddedEntries(entries uint32) uint32 {
 // not affect maps that already exist in the kernel.
 func configureSignalMapSizes(spec *ebpf.CollectionSpec, signalCount uint32) error {
 	entries := paddedEntries(signalCount)
-	for _, name := range []string{"trajectory_map", "address_map"} {
+	for _, name := range []string{"trajectory_map", "address_map", "signal_type_map"} {
 		mapSpec := spec.Maps[name]
 		if mapSpec == nil {
 			return fmt.Errorf("missing %s map specification", name)

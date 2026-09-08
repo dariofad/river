@@ -54,6 +54,14 @@ struct {
         __type(value, __u64);
         __uint(max_entries, 4096); // NB adjust before simulating the model
 } address_map SEC(".maps");
+// Fixed-width scalar type code for each address_map entry. Keep this in sync
+// with my_types.SignalType.
+struct {
+        __uint(type, BPF_MAP_TYPE_ARRAY);
+        __type(key, __u32);
+        __type(value, __u32);
+        __uint(max_entries, 4096);
+} signal_type_map SEC(".maps");
 
 // -----------------------------------------------------------------------
 //
@@ -91,6 +99,7 @@ struct state_record {
         __u64 value;
 };
 struct state_record_trimmed {
+        __u32 value_size;
         __u64 addr;
         __u64 value;
 };
@@ -230,6 +239,57 @@ static __u64 ieee754_add(__u64 a, __u64 b) {
         return result;
 }
 
+// IEEE-754 binary32 addition implemented with integer operations: eBPF does
+// not permit hardware floating-point instructions.
+static __u32 ieee754_add32(__u32 a, __u32 b) {
+        __u32 sa = a >> 31, sb = b >> 31, ea = (a >> 23) & 0xff, eb = (b >> 23) & 0xff;
+        __u32 ma = a & 0x7fffff, mb = b & 0x7fffff;
+        if (ea)
+                ma |= 1U << 23;
+        if (eb)
+                mb |= 1U << 23;
+        bool al  = ea > eb || (ea == eb && ma > mb);
+        __u32 el = al ? ea : eb, es = al ? eb : ea, ml = al ? ma : mb, ms = al ? mb : ma;
+        __u32 sl    = al ? sa : sb;
+        __u32 delta = el > es ? el - es : 0;
+        if (delta > 31)
+                delta = 31;
+        ms >>= delta;
+        __u32 mr = sa == sb ? ml + ms : ml - ms;
+        if (!mr)
+                return 0;
+        int msb   = 63 - count_leading_left_zeroes(mr);
+        int shift = msb - 23;
+        int er    = (int)el + shift;
+        if (er > 254 || er < 0)
+                return 0;
+        if (shift > 0)
+                mr >>= shift;
+        else if (shift < 0)
+                mr <<= -shift;
+        return (sl << 31) | ((__u32)er << 23) | (mr & 0x7fffff);
+}
+
+// These must remain distinct BPF subprograms. Inlining (or a switch directly
+// around the helper) lets Clang merge their otherwise identical calls back
+// into one dynamic-length bpf_probe_write_user call, which older verifiers
+// reject even after the value-size validation.
+static __noinline long write_state_1(struct state_record_trimmed *state) {
+        return bpf_probe_write_user((void *)state->addr, &state->value, 1);
+}
+
+static __noinline long write_state_2(struct state_record_trimmed *state) {
+        return bpf_probe_write_user((void *)state->addr, &state->value, 2);
+}
+
+static __noinline long write_state_4(struct state_record_trimmed *state) {
+        return bpf_probe_write_user((void *)state->addr, &state->value, 4);
+}
+
+static __noinline long write_state_8(struct state_record_trimmed *state) {
+        return bpf_probe_write_user((void *)state->addr, &state->value, 8);
+}
+
 /* static __u64 ieee754_sub(__u64 a, __u64 b) { */
 
 /*         // flip sign and do an addition */
@@ -259,9 +319,27 @@ static long inject_values(u64 index, void *_ctx) {
                 DEBUG_P("\tERR retrieving the sequence value (urb draining)");
                 return 1;
         } else {
-                // add injected value to the desired trajectory sequence
+                __u32 *type = bpf_map_lookup_elem(&signal_type_map, &skey);
+                if (!type)
+                        return 1;
+                // Add injected value to the desired trajectory sequence using
+                // the configured scalar representation.
                 DEBUG_P("\ttime_key %d, initial: %llu, added: %llu", skey, *pert, ctx->inj_pert);
-                ctx->inj_pert = ieee754_add(ctx->inj_pert, *pert);
+                if (*type == 1)
+                        ctx->inj_pert = !*pert;
+                else if (*type == 10)
+                        ctx->inj_pert = ieee754_add32((__u32)ctx->inj_pert, (__u32)*pert);
+                else if (*type == 11)
+                        ctx->inj_pert = ieee754_add(ctx->inj_pert, *pert);
+                else {
+                        ctx->inj_pert += *pert;
+                        if (*type == 2 || *type == 6)
+                                ctx->inj_pert &= 0xff;
+                        else if (*type == 3 || *type == 7)
+                                ctx->inj_pert &= 0xffff;
+                        else if (*type == 4 || *type == 8)
+                                ctx->inj_pert &= 0xffffffff;
+                }
                 int err = bpf_map_update_elem(sequence, &(ctx->time), &(ctx->inj_pert), BPF_ANY);
                 if (err != 0) {
                         DEBUG_P("\t\t-> failed injection, ERR: %d", err);
@@ -332,8 +410,9 @@ static long get_injected_stateval_from_usp(struct bpf_dynptr *dynptr, __u32 plac
         }
 
         struct state_record_trimmed SRT = {
-            .addr  = SR->addr,
-            .value = SR->value,
+            .value_size = SR->value_size,
+            .addr       = SR->addr,
+            .value      = SR->value,
         };
         // transfer the state record to a map
         int err = bpf_map_update_elem(&state_trace, &SR->time, &SRT, BPF_ANY);
@@ -458,9 +537,16 @@ static inline int read_signals(__u64 cookie) {
                         DEBUG_P("\tERR retrieving address from address_map");
                         return -1;
                 }
-                // read the signal from user space
+                __u32 *type = bpf_map_lookup_elem(&signal_type_map, &key);
+                if (!type)
+                        return -1;
+                __u32 width = (*type == 1 || *type == 2 || *type == 6)    ? 1
+                              : (*type == 3 || *type == 7)                ? 2
+                              : (*type == 4 || *type == 8 || *type == 10) ? 4
+                                                                          : 8;
+                // read exactly the native scalar width from user space.
                 __u64 signal = 0;
-                if (bpf_probe_read_user(&signal, sizeof(signal), (void *)*address) == 0) {
+                if (bpf_probe_read_user(&signal, width, (void *)*address) == 0) {
                         DEBUG_P("\tsign_key %d from user space: %llu (address: %llu)", key, signal,
                                 *address);
                 } else {
@@ -530,20 +616,41 @@ static long write_signal(u64 index, void *_ctx) {
                 return 1;
         }
 
+        __u32 *type = bpf_map_lookup_elem(&signal_type_map, &skey);
+        if (!type)
+                return 1;
+        __u32 width = (*type == 1 || *type == 2 || *type == 6)    ? 1
+                      : (*type == 3 || *type == 7)                ? 2
+                      : (*type == 4 || *type == 8 || *type == 10) ? 4
+                                                                  : 8;
         // read the signal from user space
         __u64 sign = 0;
-        if (bpf_probe_read_user(&sign, sizeof(sign), (void *)*address) == 0) {
+        if (bpf_probe_read_user(&sign, width, (void *)*address) == 0) {
                 DEBUG_P("\ttime key %d from user space: %llu", skey, sign);
         } else {
                 DEBUG_P("\tERR, failed to read time key %d from user space", skey);
                 return 1;
         }
 
-        // add perturbation to signal
-        sign = ieee754_add(sign, *value);
+        // Numeric signals use modular native-width addition. bool toggles.
+        if (*type == 1)
+                sign = !sign;
+        else if (*type == 10)
+                sign = ieee754_add32((__u32)sign, (__u32)*value);
+        else if (*type == 11)
+                sign = ieee754_add(sign, *value);
+        else {
+                sign += *value;
+                if (width == 1)
+                        sign &= 0xff;
+                else if (width == 2)
+                        sign &= 0xffff;
+                else if (width == 4)
+                        sign &= 0xffffffff;
+        }
 
         // overwrite signal in user space
-        long err = bpf_probe_write_user((void *)*address, &sign, 8);
+        long err = bpf_probe_write_user((void *)*address, &sign, width);
         if (err != 0) {
                 DEBUG_P("\tERR, failed to overwrite signal %k in user space, err: %ld", skey, err);
                 return 1;
@@ -566,8 +673,8 @@ int uprobe_write(struct pt_regs *ctx) {
                 }
 
                 __u32 actual_time = time - 1;
-                __u64 cookie = bpf_get_attach_cookie(ctx);
-                __u32 group_base = (__u32)cookie >> 4;
+                __u64 cookie      = bpf_get_attach_cookie(ctx);
+                __u32 group_base  = (__u32)cookie >> 4;
 
                 // check runtime state injection available (STATE DRAIN)
                 // todo: apply multiple state value at the same time
@@ -583,7 +690,33 @@ int uprobe_write(struct pt_regs *ctx) {
                         DEBUG_P("-> no state perturbation applicable");
                 } else {
                         // write state injection to user space
-                        long err = bpf_probe_write_user((void *)(SRT->addr), &(SRT->value), 8);
+                        // The verifier requires the helper length to be
+                        // provably non-zero and bounded by the source field.
+                        // State records are admitted only for fixed-width
+                        // scalar sizes by userspace, but retain this guard at
+                        // the trust boundary as well.
+                        long err;
+                        // Keep the length literal in every branch. Clang can
+                        // otherwise lower a membership check to a bit-test,
+                        // which does not let older verifiers prove that zero
+                        // was excluded from the dynamic helper argument.
+                        switch (SRT->value_size) {
+                        case 1:
+                                err = write_state_1(SRT);
+                                break;
+                        case 2:
+                                err = write_state_2(SRT);
+                                break;
+                        case 4:
+                                err = write_state_4(SRT);
+                                break;
+                        case 8:
+                                err = write_state_8(SRT);
+                                break;
+                        default:
+                                DEBUG_P("ERR invalid state value size %d", SRT->value_size);
+                                return 0;
+                        }
                         if (err != 0) {
                                 DEBUG_P("\tERR, failed to write state perturbation to user "
                                         "space, err: %d",

@@ -775,6 +775,7 @@ version = "0.1.0"
 source = { virtual = "dashboard" }
 dependencies = [
     { name = "dash" },
+    { name = "msgpack" },
     { name = "pandas" },
     { name = "plotly" },
     { name = "redis" },
@@ -783,6 +784,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "dash", specifier = "==4.0.0" },
+    { name = "msgpack", specifier = "==1.1.2" },
     { name = "pandas", specifier = "==3.0.1" },
     { name = "plotly", specifier = "==6.6.0" },
     { name = "redis", specifier = "==7.3.0" },

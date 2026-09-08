@@ -66,28 +66,29 @@ Compilation verifies the binary fingerprint, resolves semantic hook IDs to
 symbols and instruction boundaries, verifies static model instances, data
 types and addresses, then atomically writes the existing JSON format. Every
 selected `read` or `write` hook becomes one JSON group. Selections may include
-supported scalar `float64` inputs, outputs, and states. States include
+fixed-width scalar `bool`, signed and unsigned 8/16/32/64-bit integers, and
+`float32` or `float64` inputs, outputs, and states. States include
 continuous (`*_X`) and block (`*_DW`) state; static model parameters are
 available for reads and, when their ELF load segment is writable, writes. The
 simulator supports at most 16 signals in each direction.
 
 Use `entry`, `return`, or (for `step`) `post_outputs` to select a compiler-
 resolved phase. `return` compiles to a native uretprobe (`"RETPROBE": true`)
-at the function and therefore uses offset `0`. For a manually chosen probe
-site, use `phase: custom` and a decimal `offset`; compilation verifies that it
+at the function and therefore uses offset `0x0`. For a manually chosen probe
+site, use `phase: custom` and a hexadecimal `offset`; compilation verifies that it
 is an instruction boundary:
 
 ```yaml
 - id: step
   phase: custom
-  offset: 55
+  offset: 0x37
   action: read
   data: [ToyModel.ToyModel_Y.y]
 ```
 
 Hand-written JSON groups may use `"RETPROBE": true` to request the same
 native return probe. The field is omitted or `false` for normal uprobes; a
-retprobe must use offset `"0"`.
+retprobe must use offset `"0x0"`.
 
 ## Manual models and data
 
@@ -96,7 +97,10 @@ fingerprinted skeleton and warns that its model definition must be supplied
 manually. Define each hook with its exact ELF function symbol and each custom
 data item with its ELF virtual address. Custom entries remain in the normal
 `inputs`, `outputs`, or `states` lists; `address` makes their location
-explicit. The runtime currently supports scalar `float64` data only.
+explicit. The runtime supports all fixed-width scalar types listed above.
+Signal perturbations add numeric values at their native width (wrapping on
+integer overflow); boolean perturbations toggle their value. State
+perturbations must include `TYPE` and the matching native `VALUE_SIZE`.
 
 ```yaml
 settings:
@@ -170,7 +174,7 @@ same rule.
   "WRITES": [
     {
       "SYMBOL": "hook_symbol",
-      "OFFSET": "74",
+      "OFFSET": "0x4a",
       "SIGNALS": [
         {"NAME": "INPUT", "TYPE": "float64", "ADDR": "0x4048"}
       ]
@@ -179,7 +183,7 @@ same rule.
   "READS": [
     {
       "SYMBOL": "hook_symbol",
-      "OFFSET": "79",
+      "OFFSET": "0x4f",
       "SIGNALS": [
         {"NAME": "OUTPUT", "TYPE": "float64", "ADDR": "0x4058"}
       ]
@@ -189,7 +193,7 @@ same rule.
 ```
 
 Each `READS` or `WRITES` item is an independently attached uprobe group. Its
-`OFFSET` is a decimal byte offset relative to that group's `SYMBOL`; it is not
+`OFFSET` is a hexadecimal byte offset relative to that group's `SYMBOL`; it is not
 an absolute ELF address. A configuration can contain at most 16 read signals
 and 16 write signals. A single group can contain all 16: its size minus one is
 encoded in the lower four bits of the eBPF attach cookie.
@@ -214,7 +218,7 @@ each sampled record and drives the configured-cycle termination condition.
    (gdb) p/x &Simulink2Code_Obj.Simulink2Code_U.x
    ```
 
-   Record the result without `0x` as `ADDR`. Confirm it belongs to a loadable
+   Record the result with its `0x` prefix as `ADDR`. Confirm it belongs to a loadable
    ELF segment with `readelf -lW /path/to/model`.
 
 3. Disassemble the hook function and choose an instruction boundary:
@@ -224,7 +228,7 @@ each sampled record and drives the configured-cycle termination condition.
    ```
 
    Subtract the symbol's start address from the selected instruction address;
-   put that decimal difference in `OFFSET`. Do not use an offset in the middle
+   convert that difference to hexadecimal and put it in `OFFSET`. Do not use an offset in the middle
    of an x86 instruction. Source-line information is useful for locating the
    relevant code, but validate the final location in the disassembly:
 

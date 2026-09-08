@@ -1,38 +1,24 @@
 package my_types
 
-import (
-	"bytes"
-	"strconv"
-)
-
 type ModelRecord struct {
 	Time   uint32
 	Filler uint32
-	Values []float64
+	Values []uint64
 }
 
 type StateRecord struct {
 	Time      uint32 `msgpack:"TIME"`
 	ValueSize uint32 `msgpack:"VALUE_SIZE"`
 	// Addr is a virtual address in the target ELF image, not a runtime address.
-	Addr  uint64  `msgpack:"ADDR"`
-	Value float64 `msgpack:"VALUE"`
-}
-
-func ModelRecordToCSVString(record ModelRecord) string {
-
-	var tmp bytes.Buffer
-	tmp.WriteString(strconv.Itoa(int(record.Time)))
-	for _, v := range record.Values {
-		tmp.WriteString(",")
-		tmp.WriteString(strconv.FormatFloat(v, 'f', 7, 64))
-	}
-	return tmp.String()
+	Addr  uint64 `msgpack:"ADDR"`
+	Type  string `msgpack:"TYPE"`
+	Value any    `msgpack:"VALUE"`
 }
 
 type Trace struct {
-	SignName string    `msgpack:"NAME"`
-	Values   []float64 `msgpack:"VALUES"`
+	SignName string `msgpack:"NAME"`
+	Type     string `msgpack:"TYPE"`
+	Values   []any  `msgpack:"VALUES"`
 }
 
 // generalized output trace

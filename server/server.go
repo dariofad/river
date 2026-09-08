@@ -139,6 +139,18 @@ func deserializeState(rawData []byte) ([]my_types.StateRecord, error) {
 		log.Println("Decoding failed, error:", err)
 		return nil, err
 	} else {
+		for _, record := range data {
+			info, typeErr := my_types.ParseSignalType(record.Type)
+			if typeErr != nil {
+				return nil, fmt.Errorf("state perturbation at %#x: %w", record.Addr, typeErr)
+			}
+			if record.ValueSize != info.Size {
+				return nil, fmt.Errorf("state perturbation at %#x has VALUE_SIZE %d; %s requires %d", record.Addr, record.ValueSize, record.Type, info.Size)
+			}
+			if _, typeErr = my_types.EncodeSignalValue(record.Value, record.Type); typeErr != nil {
+				return nil, fmt.Errorf("state perturbation at %#x: %w", record.Addr, typeErr)
+			}
+		}
 		log.Println("State Data deserialized")
 		if VERBOSE {
 			log.Println(data)

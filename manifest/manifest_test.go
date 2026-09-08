@@ -295,7 +295,7 @@ func TestCompileConfigurationRejectsManualPostOutputsAndInvalidCustomData(t *tes
 	if err == nil {
 		t.Fatal("expected manual validation error")
 	}
-	for _, want := range []string{"post_outputs is only available", "has type \"float32\""} {
+	for _, want := range []string{"post_outputs is only available", "has an empty name"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}
@@ -465,7 +465,7 @@ func TestStateSupportMatchesLegacyRuntime(t *testing.T) {
 			parameter = state
 		}
 	}
-	if integerState.Supported || integerState.Type != "int32" || !strings.Contains(integerState.Reason, "float64") {
+	if !integerState.Supported || integerState.Type != "int32" || integerState.Reason != "" {
 		t.Fatalf("integer state compatibility = %#v", integerState)
 	}
 	model.Hooks = []HookSelection{{ID: "step", Phase: "entry", Action: "write", Data: []string{parameter.Path}}}

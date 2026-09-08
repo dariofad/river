@@ -1,14 +1,12 @@
 package simulator
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"os/exec"
 	"runtime"
@@ -23,6 +21,7 @@ import (
 	"github.com/cilium/ebpf/rlimit"
 	"github.com/dariofad/river/my_types"
 	"github.com/redis/go-redis/v9"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 var VERBOSE bool
@@ -78,19 +77,22 @@ func setCycles(spec *ebpf.CollectionSpec, config my_types.Configuration) error {
 }
 
 // Converts raw simulation data to a proper trajectory
-func extractTrajectory(rawTrajectory map[string]interface{}, config my_types.Configuration) (map[string][]float64, error) {
+func extractTrajectory(rawTrajectory map[string]interface{}, config my_types.Configuration) (map[string][]uint64, error) {
 
-	trajectory := make(map[string][]float64)
+	trajectory := make(map[string][]uint64)
 	// todo: multiple writes on the same signal can lead to a wrong trajectory
 	for _, group := range config.Writes {
 		for _, signal := range group.Signals {
-			vals := make([]float64, CYCLES)
+			vals := make([]uint64, CYCLES)
 			if rawTrajectory, ok := rawTrajectory[signal.Name].([]interface{}); ok {
+				if len(rawTrajectory) != int(CYCLES) {
+					return nil, fmt.Errorf("trajectory for %s has %d values; expected %d", signal.Name, len(rawTrajectory), CYCLES)
+				}
 				for t, rawVal := range rawTrajectory {
-					val, ok := rawVal.(float64)
-					if !ok {
-						log.Printf("Cannot convert to float trajectory value %v", rawVal)
-						return nil, errors.New("Cannot convert trajectory value to float64")
+					val, err := my_types.EncodeSignalValue(rawVal, signal.Type)
+					if err != nil {
+						log.Printf("Cannot convert trajectory value %v for %s: %v", rawVal, signal.Name, err)
+						return nil, fmt.Errorf("convert trajectory value for %s: %w", signal.Name, err)
 					}
 					vals[t] = val
 				}
@@ -216,6 +218,22 @@ func Start(
 		return
 	}
 	defer probeObjs.Close()
+
+	// Associate every eBPF signal slot with its native scalar type. Read slots
+	// precede write slots, matching the address and trajectory map layout.
+	for index, signal := range append(append([]my_types.Signal{}, cReads...), cWrites...) {
+		info, typeErr := my_types.ParseSignalType(signal.Type)
+		if typeErr != nil {
+			errCh <- fmt.Errorf("signal %q: %w", signal.Name, typeErr)
+			wg.Done()
+			return
+		}
+		if typeErr = probeObjs.SignalTypeMap.Update(uint32(index), uint32(info.Code), 0); typeErr != nil {
+			errCh <- fmt.Errorf("set type for signal %q: %w", signal.Name, typeErr)
+			wg.Done()
+			return
+		}
+	}
 
 	// Extract trajectory
 	trajectory, err := extractTrajectory(rawTrajectory, config)
@@ -484,7 +502,7 @@ func Start(
 	switch simulationMode {
 	case my_types.Monitoring:
 		ctx := context.Background()
-		if err := monitorSimulation(ctx, probeObjs, nof_signals_read, simulationDone, cancelSimulation); err != nil {
+		if err := monitorSimulation(ctx, probeObjs, nof_signals_read, cReads, simulationDone, cancelSimulation); err != nil {
 			errCh <- err
 			wg.Done()
 			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
@@ -495,6 +513,7 @@ func Start(
 		for id, signal := range cReads {
 			var signTrace my_types.Trace
 			signTrace.SignName = signal.Name
+			signTrace.Type = signal.Type
 			var signalKey uint32 = uint32(id)
 			// get the trace from the eBPF map
 			pinPath := "/sys/fs/bpf/sequence_values_" + strconv.FormatInt(int64(signalKey), 10)
@@ -507,9 +526,10 @@ func Start(
 			}
 			defer innerTrace.Close()
 			// trace extraction
-			values := make([]float64, CYCLES)
+			values := make([]any, CYCLES)
 			for pos := uint32(0); pos < CYCLES; pos++ {
-				err := innerTrace.Lookup(&pos, &values[pos])
+				var bits uint64
+				err := innerTrace.Lookup(&pos, &bits)
 				if err != nil {
 					log.Printf("Trace lookup failed: %s\n", err)
 					errCh <- err
@@ -517,6 +537,13 @@ func Start(
 					stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
 					return
 				}
+				value, decodeErr := my_types.DecodeSignalValue(bits, signal.Type)
+				if decodeErr != nil {
+					errCh <- decodeErr
+					wg.Done()
+					return
+				}
+				values[pos] = value
 			}
 			signTrace.Values = values
 			//log.Printf("values %v", values)
@@ -575,7 +602,17 @@ func Start(
 						binary.Write(tempFile, binary.LittleEndian, r.Time)
 						binary.Write(tempFile, binary.LittleEndian, r.ValueSize)
 						binary.Write(tempFile, binary.LittleEndian, runtimeAddress)
-						binary.Write(tempFile, binary.LittleEndian, r.Value)
+						info, valueErr := my_types.ParseSignalType(r.Type)
+						if valueErr != nil || r.ValueSize != info.Size {
+							log.Printf("Invalid state perturbation type/size for %#x", r.Addr)
+							break
+						}
+						bits, valueErr := my_types.EncodeSignalValue(r.Value, r.Type)
+						if valueErr != nil {
+							log.Printf("Invalid state perturbation value: %v", valueErr)
+							break
+						}
+						binary.Write(tempFile, binary.LittleEndian, bits)
 					}
 
 					// call the injector
@@ -601,7 +638,7 @@ func Start(
 		}(ctx, statePertCh, probeObjs, errChi, loadBias)
 
 		// monitor simulation
-		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read, simulationDone, cancelSimulation)
+		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read, cReads, simulationDone, cancelSimulation)
 
 		// wait for simulation to terminate
 		wgm.Wait()
@@ -666,7 +703,7 @@ func Start(
 						binary.Write(tempFile, binary.LittleEndian, r.Time)
 						binary.Write(tempFile, binary.LittleEndian, r.Filler)
 						for _, v := range r.Values {
-							binary.Write(tempFile, binary.LittleEndian, math.Float64bits(v))
+							binary.Write(tempFile, binary.LittleEndian, v)
 						}
 
 					}
@@ -694,7 +731,7 @@ func Start(
 			}
 		}(ctx, pertCh, probeObjs, errChi, nof_signals_written)
 		// monitor simulation
-		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read, simulationDone, cancelSimulation)
+		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read, cReads, simulationDone, cancelSimulation)
 
 		// wait for simulation to terminate
 		wgm.Wait()
@@ -798,25 +835,37 @@ func extractPerturbationRecords(data map[string]interface{}, nof_signals_written
 		log.Print("Cannot extract raw values for time")
 		return nil, errors.New("Perturbation extraction error")
 	}
-	signalVals := make(map[string][]float64, 0)
+	signalVals := make(map[string][]uint64)
 	// extract signals
 	for signal := range data {
 		if signal == "time" {
 			continue
 		}
-		vals := make([]float64, 0)
+		vals := make([]uint64, 0)
 		if rawSignal, ok := data[signal].([]interface{}); ok {
+			var signalType string
+			for _, configured := range cWrites {
+				if configured.Name == signal {
+					signalType = configured.Type
+					break
+				}
+			}
+			if signalType == "" {
+				return nil, fmt.Errorf("unknown writable signal %q", signal)
+			}
 			for _, rawVal := range rawSignal {
-				val, ok := rawVal.(float64)
-				if !ok {
-					log.Print("Cannot convert to float64 value %v", rawVal)
-					return nil, errors.New("Cannot convert perturbation value to float64")
+				val, err := my_types.EncodeSignalValue(rawVal, signalType)
+				if err != nil {
+					return nil, fmt.Errorf("convert perturbation value for %s: %w", signal, err)
 				}
 				vals = append(vals, val)
 			}
 		} else {
 			log.Print("Cannot extract raw values for %v", signal)
 			return nil, errors.New("Perturbation extraction error")
+		}
+		if len(vals) != len(timeVals) {
+			return nil, fmt.Errorf("perturbation %q has %d values for %d time values", signal, len(vals), len(timeVals))
 		}
 		signalVals[signal] = vals
 	}
@@ -826,7 +875,7 @@ func extractPerturbationRecords(data map[string]interface{}, nof_signals_written
 		var record my_types.ModelRecord
 		record.Time = v
 		record.Filler = 0
-		record.Values = make([]float64, nof_signals_written)
+		record.Values = make([]uint64, nof_signals_written)
 		for signal_pos, signal := range cWrites {
 			if vals, ok := signalVals[signal.Name]; ok {
 				record.Values[signal_pos] = vals[p]
@@ -840,14 +889,14 @@ func extractPerturbationRecords(data map[string]interface{}, nof_signals_written
 	return pertRecords, nil
 }
 
-func asyncMonitorSimulation(wg *sync.WaitGroup, errCh chan<- error, ctx context.Context, probeObjs probeObjects, nof_signals_read uint32, simulationDone <-chan error, stopSimulation context.CancelFunc) {
+func asyncMonitorSimulation(wg *sync.WaitGroup, errCh chan<- error, ctx context.Context, probeObjs probeObjects, nof_signals_read uint32, signals []my_types.Signal, simulationDone <-chan error, stopSimulation context.CancelFunc) {
 
 	defer wg.Done()
-	err := monitorSimulation(ctx, probeObjs, nof_signals_read, simulationDone, stopSimulation)
+	err := monitorSimulation(ctx, probeObjs, nof_signals_read, signals, simulationDone, stopSimulation)
 	errCh <- err
 }
 
-func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_read uint32, simulationDone <-chan error, stopSimulation context.CancelFunc) error {
+func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_read uint32, signals []my_types.Signal, simulationDone <-chan error, stopSimulation context.CancelFunc) error {
 
 	// Create the Redis client
 	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
@@ -883,10 +932,9 @@ monitorLoop:
 				log.Printf("Corrupted record: truncated to %d bytes", len(raw))
 			}
 			// convert to a structured record
-			_vals := make([]float64, nof_signals_read)
+			_vals := make([]uint64, nof_signals_read)
 			for p, _ := range _vals {
-				_tbuf := bytes.NewReader(raw[8+p*8 : 16+p*8])
-				binary.Read(_tbuf, binary.LittleEndian, &_vals[p])
+				_vals[p] = binary.LittleEndian.Uint64(raw[8+p*8 : 16+p*8])
 			}
 			oRec := my_types.ModelRecord{
 				Time:   binary.LittleEndian.Uint32(raw),
@@ -918,7 +966,7 @@ monitorLoop:
 			}
 		}
 		if len(records) >= 50 {
-			if err = writeToRedis(ctx, redisClient, simulationKey, records); err != nil {
+			if err = writeToRedis(ctx, redisClient, simulationKey, records, signals); err != nil {
 				return errors.New("Error writing records to Redis")
 			}
 			// Empty local record slice
@@ -928,7 +976,7 @@ monitorLoop:
 	}
 	if len(records) != 0 {
 		// Flush last records
-		if err = writeToRedis(ctx, redisClient, simulationKey, records); err != nil {
+		if err = writeToRedis(ctx, redisClient, simulationKey, records, signals); err != nil {
 			return errors.New("Error writing records to Redis")
 		}
 		// Empty local record slice
@@ -940,12 +988,30 @@ monitorLoop:
 }
 
 // Writes a slice of records to Redis
-func writeToRedis(ctx context.Context, redisClient *redis.Client, simulationKey string, records []my_types.ModelRecord) error {
+func writeToRedis(ctx context.Context, redisClient *redis.Client, simulationKey string, records []my_types.ModelRecord, signals []my_types.Signal) error {
 
 	// convert records to string representation and add them to a Redis sorted set
 	var z []redis.Z
 	for _, rec := range records {
-		z = append(z, redis.Z{Score: float64(rec.Time), Member: my_types.ModelRecordToCSVString(rec)})
+		values := make([]any, len(rec.Values))
+		for i, bits := range rec.Values {
+			if i >= len(signals) {
+				return fmt.Errorf("record has more values than configured signals")
+			}
+			value, err := my_types.DecodeSignalValue(bits, signals[i].Type)
+			if err != nil {
+				return err
+			}
+			values[i] = value
+		}
+		payload, err := msgpack.Marshal(struct {
+			Time   uint32 `msgpack:"TIME"`
+			Values []any  `msgpack:"VALUES"`
+		}{rec.Time, values})
+		if err != nil {
+			return err
+		}
+		z = append(z, redis.Z{Score: float64(rec.Time), Member: payload})
 	}
 	// push records to Redis
 	if n, err := redisClient.ZAdd(ctx, simulationKey, z...).Result(); err != nil {

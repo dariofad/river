@@ -4,6 +4,7 @@ from collections.abc import Awaitable
 import pandas as pd
 import plotly.express as px
 import redis
+import msgpack
 from dash import Dash, Input, Output, dash_table, dcc, html
 from pandas.core.frame import DataFrame
 
@@ -50,9 +51,9 @@ def get_df() -> DataFrame:
 
     for item in raw_data:
         try:
-            values = item.decode("utf-8").split(",")
-            time = int(values[0])
-            signals = [float(v) for v in values[1:]]
+            record = msgpack.unpackb(item, raw=False)
+            time = int(record["TIME"])
+            signals = record["VALUES"]
             max_signals = max(max_signals, len(signals))
             parsed_rows.append([time] + signals)
         except (ValueError, IndexError):
