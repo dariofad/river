@@ -54,17 +54,16 @@ func Generate(binary string) (*Manifest, []string, error) {
 		Settings: Settings{SampleEvery: 1},
 	}
 	if len(names) == 0 {
-		return m, []string{"no Simulink model was discovered; define models, available hooks, timer_model, timer_hook, and data manually"}, nil
+		return m, []string{"no Simulink model was discovered; define models, available hooks, settings.timer, and data manually"}, nil
 	}
-	m.Settings.TimerModel = names[0]
-	m.Settings.TimerHook = "step"
+	m.Settings.Timer = Timer{Model: names[0], Hook: "step"}
 	for _, name := range names {
 		model := d.Models[name].Manifest
 		// The simulator JSON payload has one global signal namespace. Leave
 		// additional discovered models available for the user to configure, but
 		// disabled by default so equal input names cannot make a fresh manifest
 		// uncompilable.
-		model.Enabled = name == m.Settings.TimerModel
+		model.Enabled = name == m.Settings.Timer.Model
 		m.Models = append(m.Models, model)
 	}
 	warnings := inferSemanticDefaults(binary, m, d)

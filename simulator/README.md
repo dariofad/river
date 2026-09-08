@@ -35,8 +35,9 @@ artifact:
 settings:
   cycles: 100
   sample_every: 1
-  timer_model: Controller
-  timer_hook: step
+  timer:
+    model: Controller
+    hook: step
 models:
   - name: Controller
     enabled: true

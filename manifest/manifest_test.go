@@ -159,7 +159,7 @@ int main() { alpha.step(); beta.step(); return 0; }
 		m.Models[i].Enabled = true
 	}
 	m.Settings.Cycles = 10
-	m.Settings.TimerModel = "Beta"
+	m.Settings.Timer.Model = "Beta"
 	config, err := CompileConfiguration(m)
 	if err != nil {
 		t.Fatal(err)
@@ -192,8 +192,8 @@ func TestGenerateAndCompileConfiguration(t *testing.T) {
 		t.Fatalf("models = %d, want %d", got, want)
 	}
 	model := m.Models[0]
-	if model.Name != "TestModel" || m.Settings.TimerModel != "TestModel" {
-		t.Fatalf("unexpected generated model/timer: %q/%q", model.Name, m.Settings.TimerModel)
+	if model.Name != "TestModel" || m.Settings.Timer.Model != "TestModel" {
+		t.Fatalf("unexpected generated model/timer: %q/%q", model.Name, m.Settings.Timer.Model)
 	}
 	if len(model.Hooks) != 2 || model.Hooks[0].ID != "step" || model.Hooks[0].Phase != "entry" || model.Hooks[0].Action != "write" || model.Hooks[1].ID != "step" || model.Hooks[1].Phase != "post_outputs" || model.Hooks[1].Action != "read" {
 		t.Fatalf("unexpected generated hooks: %#v", model.Hooks)
@@ -232,15 +232,11 @@ func TestGenerateAndCompileConfiguration(t *testing.T) {
 	}
 }
 
-func TestCompileConfigurationDefaultsTimerHookToStep(t *testing.T) {
+func TestCompileConfigurationRequiresTimerHook(t *testing.T) {
 	m, _ := configuredManifest(t)
-	m.Settings.TimerHook = ""
-	config, err := CompileConfiguration(m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if config.TimerSymbol != "_ZN9TestModel4stepEv" {
-		t.Fatalf("default timer hook = %q", config.TimerSymbol)
+	m.Settings.Timer.Hook = ""
+	if _, err := CompileConfiguration(m); err == nil || !strings.Contains(err.Error(), "settings.timer.hook is required") {
+		t.Fatalf("expected required timer hook error, got %v", err)
 	}
 }
 
@@ -250,11 +246,11 @@ func TestGenerateManualSkeletonAndCompileCustomDataWithoutDWARF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(generated.Models) != 0 || generated.Settings.TimerModel != "" || len(warnings) != 1 || !strings.Contains(warnings[0], "define models") {
+	if len(generated.Models) != 0 || generated.Settings.Timer.Model != "" || len(warnings) != 1 || !strings.Contains(warnings[0], "define models") {
 		t.Fatalf("manual skeleton = %#v, warnings = %#v", generated, warnings)
 	}
 	input, output, state := HexUint64(addresses["manual_input"]), HexUint64(addresses["manual_output"]), HexUint64(addresses["manual_state"])
-	generated.Settings = Settings{Cycles: 4, SampleEvery: 1, TimerModel: "Manual", TimerHook: "tick"}
+	generated.Settings = Settings{Cycles: 4, SampleEvery: 1, Timer: Timer{Model: "Manual", Hook: "tick"}}
 	generated.Models = []Model{{
 		Name: "Manual", Enabled: true,
 		AvailableHooks: []Hook{{ID: "tick", Symbol: "manual_tick"}},
@@ -281,7 +277,7 @@ func TestGenerateManualSkeletonAndCompileCustomDataWithoutDWARF(t *testing.T) {
 func TestCompileConfigurationRejectsManualPostOutputsAndInvalidCustomData(t *testing.T) {
 	binary, addresses := manualFixture(t)
 	input := HexUint64(addresses["manual_input"])
-	m := &Manifest{Version: 1, Artifact: Artifact{Binary: binary, BuildID: mustFingerprint(t, binary)}, Settings: Settings{Cycles: 1, SampleEvery: 1, TimerModel: "Manual", TimerHook: "tick"}, Models: []Model{{
+	m := &Manifest{Version: 1, Artifact: Artifact{Binary: binary, BuildID: mustFingerprint(t, binary)}, Settings: Settings{Cycles: 1, SampleEvery: 1, Timer: Timer{Model: "Manual", Hook: "tick"}}, Models: []Model{{
 		Name: "Manual", Enabled: true, AvailableHooks: []Hook{{ID: "tick", Symbol: "manual_tick"}},
 		Inputs: []Data{{Name: "", Path: "manual.input", Type: "float32", Address: &input}},
 		Hooks: []HookSelection{
@@ -346,7 +342,7 @@ func TestPostOutputOffset(t *testing.T) {
 func TestCompileConfigurationReportsCompatibilityProblems(t *testing.T) {
 	m, _ := configuredManifest(t)
 	m.Settings.Cycles = 0
-	m.Settings.TimerModel = "missing"
+	m.Settings.Timer.Model = "missing"
 	m.Models[0].Hooks[0].Phase = "invalid"
 	m.Models[0].Inputs[0].Name = m.Models[0].Outputs[0].Name
 	readHook := m.Models[0].Hooks[1].ID

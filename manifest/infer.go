@@ -54,7 +54,7 @@ func inferSemanticDefaults(binary string, m *Manifest, discovered *discovery) []
 		} else {
 			warnings = append(warnings, fmt.Sprintf("model %q: no post-output source site; using terminal return", model.Name))
 		}
-		if model.Name != m.Settings.TimerModel {
+		if model.Name != m.Settings.Timer.Model {
 			continue
 		}
 		stages, ok := fixedStages(source)
