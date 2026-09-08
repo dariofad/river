@@ -1,12 +1,9 @@
 package manifest
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
-	"github.com/dariofad/river/my_types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,39 +17,6 @@ func Read(path string) (*Manifest, error) {
 		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
 	return &m, nil
-}
-
-// WriteConfiguration atomically writes the exact JSON shape consumed by
-// the existing simulator.
-func WriteConfiguration(path string, config *my_types.Configuration) error {
-	raw, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode simulator configuration: %w", err)
-	}
-	raw = append(raw, '\n')
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".river-config-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create temporary simulator configuration: %w", err)
-	}
-	tmpPath := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpPath) }
-	defer cleanup()
-	if err := tmp.Chmod(0o644); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("set simulator configuration permissions: %w", err)
-	}
-	if _, err := tmp.Write(raw); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("write simulator configuration: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close simulator configuration: %w", err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("replace simulator configuration: %w", err)
-	}
-	return nil
 }
 
 func Write(path string, m *Manifest) error {

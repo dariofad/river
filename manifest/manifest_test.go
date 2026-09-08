@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/dariofad/river/my_types"
 )
 
 func TestDecodeInstructionArchitectures(t *testing.T) {
@@ -162,7 +160,7 @@ int main() { alpha.step(); beta.step(); return 0; }
 	}
 	m.Settings.Cycles = 10
 	m.Settings.TimerModel = "Beta"
-	config, err := CompileConfiguration(m, binary)
+	config, err := CompileConfiguration(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +201,7 @@ func TestGenerateAndCompileConfiguration(t *testing.T) {
 	if got, want := model.AvailableHooks, []Hook{{ID: "step"}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("available hooks = %#v, want %#v", got, want)
 	}
-	config, err := CompileConfiguration(m, binary)
+	config, err := CompileConfiguration(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,9 +233,9 @@ func TestGenerateAndCompileConfiguration(t *testing.T) {
 }
 
 func TestCompileConfigurationDefaultsTimerHookToStep(t *testing.T) {
-	m, binary := configuredManifest(t)
+	m, _ := configuredManifest(t)
 	m.Settings.TimerHook = ""
-	config, err := CompileConfiguration(m, binary)
+	config, err := CompileConfiguration(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +266,7 @@ func TestGenerateManualSkeletonAndCompileCustomDataWithoutDWARF(t *testing.T) {
 			{ID: "tick", Phase: "return", Action: "read", Data: []string{"manual.output", "manual.state"}},
 		},
 	}}
-	config, err := CompileConfiguration(generated, binary)
+	config, err := CompileConfiguration(generated)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +281,7 @@ func TestGenerateManualSkeletonAndCompileCustomDataWithoutDWARF(t *testing.T) {
 func TestCompileConfigurationRejectsManualPostOutputsAndInvalidCustomData(t *testing.T) {
 	binary, addresses := manualFixture(t)
 	input := HexUint64(addresses["manual_input"])
-	m := &Manifest{Version: 1, Artifact: Artifact{BuildID: mustFingerprint(t, binary)}, Settings: Settings{Cycles: 1, SampleEvery: 1, TimerModel: "Manual", TimerHook: "tick"}, Models: []Model{{
+	m := &Manifest{Version: 1, Artifact: Artifact{Binary: binary, BuildID: mustFingerprint(t, binary)}, Settings: Settings{Cycles: 1, SampleEvery: 1, TimerModel: "Manual", TimerHook: "tick"}, Models: []Model{{
 		Name: "Manual", Enabled: true, AvailableHooks: []Hook{{ID: "tick", Symbol: "manual_tick"}},
 		Inputs: []Data{{Name: "", Path: "manual.input", Type: "float32", Address: &input}},
 		Hooks: []HookSelection{
@@ -291,7 +289,7 @@ func TestCompileConfigurationRejectsManualPostOutputsAndInvalidCustomData(t *tes
 			{ID: "tick", Phase: "return", Action: "read", Data: []string{"manual.input"}},
 		},
 	}}}
-	_, err := CompileConfiguration(m, binary)
+	_, err := CompileConfiguration(m)
 	if err == nil {
 		t.Fatal("expected manual validation error")
 	}
@@ -346,14 +344,14 @@ func TestPostOutputOffset(t *testing.T) {
 }
 
 func TestCompileConfigurationReportsCompatibilityProblems(t *testing.T) {
-	m, binary := configuredManifest(t)
+	m, _ := configuredManifest(t)
 	m.Settings.Cycles = 0
 	m.Settings.TimerModel = "missing"
 	m.Models[0].Hooks[0].Phase = "invalid"
 	m.Models[0].Inputs[0].Name = m.Models[0].Outputs[0].Name
 	readHook := m.Models[0].Hooks[1].ID
 	m.Models[0].Hooks = append(m.Models[0].Hooks, HookSelection{ID: readHook, Phase: m.Models[0].Hooks[1].Phase, Action: "read", Data: []string{m.Models[0].States[0].Path}})
-	_, err := CompileConfiguration(m, binary)
+	_, err := CompileConfiguration(m)
 	if err == nil {
 		t.Fatal("expected compatibility error")
 	}
@@ -372,14 +370,14 @@ func TestCompileConfigurationReportsCompatibilityProblems(t *testing.T) {
 }
 
 func TestCompileConfigurationSupportsIndependentHookSelectionsAndStates(t *testing.T) {
-	m, binary := configuredManifest(t)
+	m, _ := configuredManifest(t)
 	model := &m.Models[0]
 	model.Hooks = []HookSelection{
 		{ID: "step", Phase: "entry", Action: "write", Data: []string{model.Inputs[0].Path, model.States[0].Path}},
 		{ID: "step", Phase: "entry", Action: "read", Data: []string{model.States[0].Path}},
 		{ID: "step", Phase: "return", Action: "read", Data: []string{model.Inputs[0].Path, model.Outputs[0].Path}},
 	}
-	config, err := CompileConfiguration(m, binary)
+	config, err := CompileConfiguration(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,8 +390,8 @@ func TestCompileConfigurationSupportsIndependentHookSelectionsAndStates(t *testi
 }
 
 func TestCompileConfigurationSupportsCustomHookOffset(t *testing.T) {
-	m, binary := configuredManifest(t)
-	baseline, err := CompileConfiguration(m, binary)
+	m, _ := configuredManifest(t)
+	baseline, err := CompileConfiguration(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +402,7 @@ func TestCompileConfigurationSupportsCustomHookOffset(t *testing.T) {
 	model := &m.Models[0]
 	customOffset := HexUint64(offset)
 	model.Hooks = []HookSelection{{ID: "step", Phase: "custom", Offset: &customOffset, Action: "read", Data: []string{model.Outputs[0].Path}}}
-	config, err := CompileConfiguration(m, binary)
+	config, err := CompileConfiguration(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,25 +411,25 @@ func TestCompileConfigurationSupportsCustomHookOffset(t *testing.T) {
 	}
 
 	model.Hooks[0].Offset = nil
-	if _, err := CompileConfiguration(m, binary); err == nil || !strings.Contains(err.Error(), "custom phase requires an offset") {
+	if _, err := CompileConfiguration(m); err == nil || !strings.Contains(err.Error(), "custom phase requires an offset") {
 		t.Fatalf("expected missing custom offset error, got %v", err)
 	}
 
 	invalidOffset := HexUint64(1 << 30)
 	model.Hooks[0].Offset = &invalidOffset
-	if _, err := CompileConfiguration(m, binary); err == nil || !strings.Contains(err.Error(), "not an instruction boundary") {
+	if _, err := CompileConfiguration(m); err == nil || !strings.Contains(err.Error(), "not an instruction boundary") {
 		t.Fatalf("expected invalid custom offset error, got %v", err)
 	}
 
 	model.Hooks[0].Phase = "entry"
 	model.Hooks[0].Offset = &customOffset
-	if _, err := CompileConfiguration(m, binary); err == nil || !strings.Contains(err.Error(), "offset is only valid for the custom phase") {
+	if _, err := CompileConfiguration(m); err == nil || !strings.Contains(err.Error(), "offset is only valid for the custom phase") {
 		t.Fatalf("expected non-custom offset error, got %v", err)
 	}
 }
 
 func TestCompileConfigurationSupportsStaticStates(t *testing.T) {
-	m, binary := configuredManifest(t)
+	m, _ := configuredManifest(t)
 	model := &m.Models[0]
 	var parameter Data
 	for _, state := range model.States {
@@ -444,7 +442,7 @@ func TestCompileConfigurationSupportsStaticStates(t *testing.T) {
 		t.Fatalf("static parameter was not discovered: %#v", model.States)
 	}
 	model.Hooks = []HookSelection{{ID: "step", Phase: "return", Action: "read", Data: []string{parameter.Path}}}
-	config, err := CompileConfiguration(m, binary)
+	config, err := CompileConfiguration(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +452,7 @@ func TestCompileConfigurationSupportsStaticStates(t *testing.T) {
 }
 
 func TestStateSupportMatchesLegacyRuntime(t *testing.T) {
-	m, binary := configuredManifest(t)
+	m, _ := configuredManifest(t)
 	model := &m.Models[0]
 	var integerState, parameter Data
 	for _, state := range model.States {
@@ -469,7 +467,7 @@ func TestStateSupportMatchesLegacyRuntime(t *testing.T) {
 		t.Fatalf("integer state compatibility = %#v", integerState)
 	}
 	model.Hooks = []HookSelection{{ID: "step", Phase: "entry", Action: "write", Data: []string{parameter.Path}}}
-	config, err := CompileConfiguration(m, binary)
+	config, err := CompileConfiguration(m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,14 +477,14 @@ func TestStateSupportMatchesLegacyRuntime(t *testing.T) {
 }
 
 func TestCompileConfigurationRejectsInvalidHookSelection(t *testing.T) {
-	m, binary := configuredManifest(t)
+	m, _ := configuredManifest(t)
 	model := &m.Models[0]
 	model.Hooks = append(model.Hooks,
 		HookSelection{ID: "step", Phase: "entry", Action: "write", Data: []string{model.Inputs[0].Path}},
 		HookSelection{ID: "missing", Phase: "return", Action: "read", Data: []string{model.Outputs[0].Path}},
 		HookSelection{ID: "step", Phase: "return", Action: "invalid", Data: []string{model.Outputs[0].Path}},
 	)
-	_, err := CompileConfiguration(m, binary)
+	_, err := CompileConfiguration(m)
 	if err == nil {
 		t.Fatal("expected invalid selection errors")
 	}
@@ -498,9 +496,9 @@ func TestCompileConfigurationRejectsInvalidHookSelection(t *testing.T) {
 }
 
 func TestCompileConfigurationRejectsStaleBuild(t *testing.T) {
-	m, binary := configuredManifest(t)
+	m, _ := configuredManifest(t)
 	m.Artifact.BuildID = "sha256:stale"
-	if _, err := CompileConfiguration(m, binary); err == nil || !strings.Contains(err.Error(), "build_id") {
+	if _, err := CompileConfiguration(m); err == nil || !strings.Contains(err.Error(), "build_id") {
 		t.Fatalf("expected stale build error, got %v", err)
 	}
 }
@@ -515,50 +513,12 @@ func TestCompileConfigurationAcceptsMatchingBinaryAtNewPath(t *testing.T) {
 	if err := os.WriteFile(moved, raw, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config, err := CompileConfiguration(m, moved)
+	m.Artifact.Binary = moved
+	config, err := CompileConfiguration(m)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if config.ModelPath != moved {
 		t.Fatalf("MODEL_PATH = %q, want explicit binary %q", config.ModelPath, moved)
-	}
-}
-
-func TestWriteConfigurationIsSimulatorCompatible(t *testing.T) {
-	m, binary := configuredManifest(t)
-	config, err := CompileConfiguration(m, binary)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "config.json")
-	if err := WriteConfiguration(path, config); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, key := range []string{"MODEL_PATH", "TIMER_SYMBOL", "MINOR_TO_MAJOR_RATIO", "NOF_CYCLES", "READS", "WRITES", "SIGNALS", "ADDR"} {
-		if !strings.Contains(string(raw), `"`+key+`"`) {
-			t.Errorf("JSON is missing simulator key %q: %s", key, raw)
-		}
-	}
-}
-
-func TestWriteConfigurationEncodesRetprobe(t *testing.T) {
-	config := &my_types.Configuration{Reads: []my_types.Group{{
-		Symbol: "step", Offset: "0", Retprobe: true,
-		Signals: []my_types.Signal{{Name: "output", Type: "float64", Addr: "4048"}},
-	}}}
-	path := filepath.Join(t.TempDir(), "config.json")
-	if err := WriteConfiguration(path, config); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(raw), `"RETPROBE": true`) {
-		t.Fatalf("retprobe marker is missing: %s", raw)
 	}
 }

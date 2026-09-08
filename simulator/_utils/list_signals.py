@@ -1,29 +1,38 @@
 #!/usr/bin/env python3
 
-import json
 import sys
 from collections import OrderedDict
 
-config = json.load(sys.stdin)
+import yaml
+
+manifest = yaml.safe_load(sys.stdin)
 TABLE = OrderedDict()
 NOF_SIGNALS_READ, NOF_SIGNALS_WRITTEN = 0, 0
-READS = config["READS"]
-WRITES = config["WRITES"]
 
 
-def summarize_signals(groups: dict[str, str]) -> None:
-    for group in groups:
-        offset = len(TABLE.keys())
-        for pos, sign in enumerate(group["SIGNALS"]):  # type: ignore
-            TABLE[offset + pos] = sign["NAME"]  # type: ignore
+def summarize_signals(action: str) -> None:
+    global NOF_SIGNALS_READ, NOF_SIGNALS_WRITTEN
+    for model in manifest.get("models", []):
+        if not model.get("enabled", False):
+            continue
+        names = {
+            data["path"]: data["name"]
+            for category in ("inputs", "outputs", "states")
+            for data in model.get(category, [])
+        }
+        for hook in model.get("hooks", []):
+            if hook.get("action") != action:
+                continue
+            for path in hook.get("data", []):
+                TABLE[len(TABLE)] = names[path]
+                if action == "read":
+                    NOF_SIGNALS_READ += 1
+                else:
+                    NOF_SIGNALS_WRITTEN += 1
 
 
-if READS:
-    summarize_signals(READS)
-    NOF_SIGNALS_READ = len(TABLE.keys())
-if WRITES:
-    summarize_signals(WRITES)
-    NOF_SIGNALS_WRITTEN = len(TABLE.keys()) - NOF_SIGNALS_READ
+summarize_signals("read")
+summarize_signals("write")
 
 if not TABLE.keys():
     exit()

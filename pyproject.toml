@@ -9,6 +9,7 @@ dependencies = [
     "numpy==2.4.6",
     "pandas==3.0.1",
     "plotly==6.6.0",
+    "PyYAML==6.0.3",
     "redis==7.3.0",
 ]
 

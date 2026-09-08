@@ -8,7 +8,7 @@ SIGN = sign
 STATE = state
 WIDTH = 5
 
-.PHONY: monit fals sign state
+.PHONY: monit fals sign state select_manifest
 ONESHELL: monit fals sign state
 .DEFAULT_GOAL := list
 
@@ -36,24 +36,23 @@ clean_cache:
 	@ echo "Cleaning the KeyValue cache..."
 	@ docker exec redis redis-cli DEL "simulation" "simulation:0"
 
-monit: clean_cache
-	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+select_manifest:
+	@ tmp=../simulator/.manifest.yaml.tmp; cp ../simulator/demos/M$(M)_C$(C).river.yaml $$tmp; mv $$tmp ../simulator/manifest.yaml
+
+monit: clean_cache select_manifest
 	@ chmod +x ../simulator/_utils/list_signals.py
-	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
+	@ ../simulator/_utils/list_signals.py < ../simulator/manifest.yaml
 	@ uv run monit.py $(HOST) $(M) $(C)
 
-fals: clean_cache
-	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+fals: clean_cache select_manifest
 	@ uv run fals.py $(HOST) $(M) $(C)
 
-sign: clean_cache
-	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+sign: clean_cache select_manifest
 	@ chmod +x ../simulator/_utils/list_signals.py
-	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
+	@ ../simulator/_utils/list_signals.py < ../simulator/manifest.yaml
 	@ uv run sign.py $(HOST) $(M) $(C)
 
-state: clean_cache
-	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+state: clean_cache select_manifest
 	@ chmod +x ../simulator/_utils/list_signals.py
-	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
+	@ ../simulator/_utils/list_signals.py < ../simulator/manifest.yaml
 	@ uv run state.py $(HOST) $(M) $(C)

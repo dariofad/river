@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 
 import argparse
-import json
 import socket
 import sys
 import time
 
 import demos_config
 import msgpack
+from active_manifest import active_cycles
 
-CYCLES: int = 0
-with open("../simulator/config.json", encoding="utf-8") as file:
-    CYCLES = int(json.load(file)["NOF_CYCLES"])
+CYCLES = active_cycles()
 INJECTIONS: int = 0
 
 PORT = 8082

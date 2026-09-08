@@ -1,0 +1,64 @@
+version: 1
+artifact:
+    binary: /home/matt/cps/sim2cpp/TestM/Tester
+    build_id: sha256:8abfb4ba9923653ad4f960152b2503a646b054be4e39e7af432d6fd3e30fcc73
+settings:
+    cycles: 10
+    sample_every: 1
+    timer_model: Tester
+    timer_hook: step
+models:
+    - name: Tester
+      enabled: true
+      hooks:
+        - id: step
+          phase: entry
+          action: write
+          data:
+            - Tester.extU.y
+            - Tester.extU.z
+        - id: step
+          phase: return
+          action: read
+          data:
+            - Tester.extU.x
+            - Tester.extU.y
+            - Tester.extU.z
+            - Tester.extY.res
+            - Tester.offset
+      available_hooks:
+        - id: step
+          symbol: _ZN6Tester4stepEv
+      inputs:
+        - name: x
+          path: Tester.extU.x
+          address: 0x4040
+          category: input
+          type: float64
+          supported: true
+        - name: y
+          path: Tester.extU.y
+          address: 0x4048
+          category: input
+          type: float64
+          supported: true
+        - name: z
+          path: Tester.extU.z
+          address: 0x4050
+          category: input
+          type: float64
+          supported: true
+      outputs:
+        - name: res
+          path: Tester.extY.res
+          address: 0x4058
+          category: output
+          type: float64
+          supported: true
+      states:
+        - name: offset
+          path: Tester.offset
+          address: 0x4060
+          category: block_state
+          type: float64
+          supported: true
