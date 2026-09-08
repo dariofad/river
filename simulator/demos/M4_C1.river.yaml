@@ -5,8 +5,9 @@ artifact:
 settings:
     cycles: 10
     sample_every: 1
-    timer_model: Tester
-    timer_hook: step
+    timer:
+      model: Tester
+      hook: step
 models:
     - name: Tester
       enabled: true

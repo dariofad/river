@@ -142,33 +142,31 @@ func CompileConfiguration(m *Manifest) (*my_types.Configuration, error) {
 	if len(enabledModels) == 0 {
 		problems = append(problems, "manifest does not enable any models")
 	}
-	timerHook := m.Settings.TimerHook
-	if timerHook == "" {
-		timerHook = "step"
-	}
 	var timerManifestModel *Model
 	for i := range m.Models {
-		if m.Models[i].Name == m.Settings.TimerModel {
+		if m.Models[i].Name == m.Settings.Timer.Model {
 			timerManifestModel = &m.Models[i]
 			break
 		}
 	}
 	switch {
-	case m.Settings.TimerModel == "":
-		problems = append(problems, "settings.timer_model is required")
-	case !enabledModels[m.Settings.TimerModel]:
-		problems = append(problems, fmt.Sprintf("timer model %q is not enabled", m.Settings.TimerModel))
+	case m.Settings.Timer.Model == "":
+		problems = append(problems, "settings.timer.model is required")
+	case m.Settings.Timer.Hook == "":
+		problems = append(problems, "settings.timer.hook is required")
+	case !enabledModels[m.Settings.Timer.Model]:
+		problems = append(problems, fmt.Sprintf("timer model %q is not enabled", m.Settings.Timer.Model))
 	case timerManifestModel == nil:
-		problems = append(problems, fmt.Sprintf("timer model %q is not declared", m.Settings.TimerModel))
+		problems = append(problems, fmt.Sprintf("timer model %q is not declared", m.Settings.Timer.Model))
 	default:
 		hooks := buildHookCatalog(*timerManifestModel, &problems)
-		hook := hooks[timerHook]
+		hook := hooks[m.Settings.Timer.Hook]
 		if hook == nil {
-			problems = append(problems, fmt.Sprintf("timer hook %q is not available for model %q", timerHook, m.Settings.TimerModel))
-		} else if symbol, err := resolveHookSymbol(d.Models[m.Settings.TimerModel], *hook); err != nil {
-			problems = append(problems, fmt.Sprintf("timer model %q: %v", m.Settings.TimerModel, err))
+			problems = append(problems, fmt.Sprintf("timer hook %q is not available for model %q", m.Settings.Timer.Hook, m.Settings.Timer.Model))
+		} else if symbol, err := resolveHookSymbol(d.Models[m.Settings.Timer.Model], *hook); err != nil {
+			problems = append(problems, fmt.Sprintf("timer model %q: %v", m.Settings.Timer.Model, err))
 		} else if _, err := findFunctionSymbol(ef, symbol); err != nil {
-			problems = append(problems, fmt.Sprintf("timer model %q: %v", m.Settings.TimerModel, err))
+			problems = append(problems, fmt.Sprintf("timer model %q: %v", m.Settings.Timer.Model, err))
 		} else {
 			config.TimerSymbol = symbol
 		}

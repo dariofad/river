@@ -5,8 +5,9 @@ artifact:
 settings:
     cycles: 1001
     sample_every: 3
-    timer_model: AbstractFuelControl_M1
-    timer_hook: step
+    timer:
+      model: AbstractFuelControl_M1
+      hook: step
 models:
     - name: AbstractFuelControl_M1
       enabled: true

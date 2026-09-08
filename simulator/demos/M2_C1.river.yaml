@@ -5,8 +5,9 @@ artifact:
 settings:
     cycles: 20
     sample_every: 1
-    timer_model: Simulink2Code
-    timer_hook: step
+    timer:
+      model: Simulink2Code
+      hook: step
 models:
     - name: Simulink2Code
       enabled: true

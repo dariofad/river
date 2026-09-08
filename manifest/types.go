@@ -49,10 +49,13 @@ type Artifact struct {
 type Settings struct {
 	Cycles      uint32 `yaml:"cycles" json:"cycles"`
 	SampleEvery uint32 `yaml:"sample_every" json:"sample_every"`
-	TimerModel  string `yaml:"timer_model" json:"timer_model"`
-	// TimerHook identifies the available hook whose function advances the
-	// simulation clock. Empty retains the original `step` default.
-	TimerHook string `yaml:"timer_hook,omitempty" json:"timer_hook,omitempty"`
+	Timer       Timer  `yaml:"timer" json:"timer"`
+}
+
+// Timer identifies the model hook that advances the simulation clock.
+type Timer struct {
+	Model string `yaml:"model" json:"model"`
+	Hook  string `yaml:"hook" json:"hook"`
 }
 
 type Model struct {

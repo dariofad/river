@@ -5,8 +5,9 @@ artifact:
 settings:
     cycles: 800
     sample_every: 3
-    timer_model: egoCar
-    timer_hook: step
+    timer:
+      model: egoCar
+      hook: step
 models:
     - name: egoCar
       enabled: true
