@@ -3,7 +3,6 @@ package simulator
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -19,6 +18,7 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
+	"github.com/dariofad/river/manifest"
 	"github.com/dariofad/river/my_types"
 	"github.com/redis/go-redis/v9"
 	"github.com/vmihailenco/msgpack/v5"
@@ -28,6 +28,16 @@ var VERBOSE bool
 var BENCH bool
 var RATIO uint32
 var CYCLES uint32
+
+const activeManifestPath = "simulator/manifest.yaml"
+
+func loadActiveConfiguration() (*my_types.Configuration, error) {
+	m, err := manifest.Read(activeManifestPath)
+	if err != nil {
+		return nil, err
+	}
+	return manifest.CompileConfiguration(m)
+}
 
 type eBPFInjector struct {
 	probeObjs *probeObjects
@@ -125,18 +135,11 @@ func Start(
 		return
 	}
 
-	// Read the simulation data from the configuration file
-	rawSimData, err := os.ReadFile("simulator/config.json")
+	// The active manifest is the sole user-facing configuration. Lower it in
+	// memory for this run so no stale JSON configuration can affect execution.
+	config, err := loadActiveConfiguration()
 	if err != nil {
-		log.Print("Error reading the configuration")
-		errCh <- errors.New("Simulation failed: cannot read the configuration file")
-		wg.Done()
-		return
-	}
-	var config my_types.Configuration
-	err = json.Unmarshal(rawSimData, &config)
-	if err != nil {
-		log.Printf("Error parsing the configuration: %s", err)
+		log.Printf("Error loading active manifest: %s", err)
 		errCh <- err
 		wg.Done()
 		return
@@ -145,7 +148,7 @@ func Start(
 	// Configuration addresses are static ELF virtual addresses. Validate them
 	// before starting the model; they will be translated while the child is
 	// stopped immediately after exec.
-	relocation, err := configureRelocation(config)
+	relocation, err := configureRelocation(*config)
 	if err != nil {
 		log.Printf("Cannot configure ASLR-safe target addresses: %v", err)
 		errCh <- err
@@ -154,7 +157,7 @@ func Start(
 	}
 
 	// Set cycles in ebpf
-	err = setCycles(spec, config)
+	err = setCycles(spec, *config)
 	if err != nil {
 		errCh <- err
 		wg.Done()
@@ -236,7 +239,7 @@ func Start(
 	}
 
 	// Extract trajectory
-	trajectory, err := extractTrajectory(rawTrajectory, config)
+	trajectory, err := extractTrajectory(rawTrajectory, *config)
 	if err != nil {
 		errCh <- err
 		wg.Done()
@@ -475,7 +478,7 @@ func Start(
 				log.Printf("Simulation finished with error: %s", err)
 				errCh <- err
 				wg.Done()
-				stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
+				stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 				return
 			}
 		} else {
@@ -505,7 +508,7 @@ func Start(
 		if err := monitorSimulation(ctx, probeObjs, nof_signals_read, cReads, simulationDone, cancelSimulation); err != nil {
 			errCh <- err
 			wg.Done()
-			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
+			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 			return
 		}
 	case my_types.Falsification:
@@ -534,7 +537,7 @@ func Start(
 					log.Printf("Trace lookup failed: %s\n", err)
 					errCh <- err
 					wg.Done()
-					stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
+					stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 					return
 				}
 				value, decodeErr := my_types.DecodeSignalValue(bits, signal.Type)
@@ -565,7 +568,7 @@ func Start(
 			log.Printf("Cannot pin state perturbation buffer at %v", pertRBPath)
 			errCh <- err
 			wg.Done()
-			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
+			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 			return
 		}
 		// defer unpinnning
@@ -648,7 +651,7 @@ func Start(
 		} else {
 			wg.Done()
 		}
-		stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
+		stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 		return
 
 	case my_types.SignalPerturbation:
@@ -666,7 +669,7 @@ func Start(
 			log.Printf("Cannot pin perturbation buffer at %v", pertRBPath)
 			errCh <- err
 			wg.Done()
-			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
+			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 			return
 		}
 		// defer unpinnning
@@ -742,13 +745,13 @@ func Start(
 			wg.Done()
 		}
 
-		stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
+		stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 		return
 	}
 
 	// terminate
 	wg.Done()
-	stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, config)
+	stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 	return
 }
 

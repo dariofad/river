@@ -6,6 +6,7 @@ dependencies = [
     "dash==4.0.0",
     "msgpack==1.1.2",
     "pandas==3.0.1",
+    "PyYAML==6.0.3",
     "plotly==6.6.0",
     "redis==7.3.0",
 ]

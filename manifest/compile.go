@@ -14,10 +14,13 @@ import (
 
 const simulatorSignalLimit = 16
 
-// CompileConfiguration validates a user-edited manifest against binary and lowers it
-// to the configuration consumed by the unchanged simulator.
-func CompileConfiguration(m *Manifest, binary string) (*my_types.Configuration, error) {
-	absolute, err := filepath.Abs(binary)
+// CompileConfiguration validates a user-edited manifest against its declared
+// binary and lowers it to River's internal runtime configuration.
+func CompileConfiguration(m *Manifest) (*my_types.Configuration, error) {
+	if m.Artifact.Binary == "" {
+		return nil, errors.New("artifact.binary is required")
+	}
+	absolute, err := filepath.Abs(m.Artifact.Binary)
 	if err != nil {
 		return nil, fmt.Errorf("resolve binary path: %w", err)
 	}

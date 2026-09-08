@@ -1,10 +1,10 @@
-import json
 from collections.abc import Awaitable
 
 import pandas as pd
 import plotly.express as px
 import redis
 import msgpack
+import yaml
 from dash import Dash, Input, Output, dash_table, dcc, html
 from pandas.core.frame import DataFrame
 
@@ -24,13 +24,19 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=
 
 def get_config() -> None:
     global READ_NAMES
-    with open("../simulator/config.json") as f:
-        config = json.load(f)
-        reads = config["READS"]
-        for group in reads:
-            signals = group["SIGNALS"]
-            for s in signals:
-                READ_NAMES.append(s["NAME"])
+    with open("../simulator/manifest.yaml", encoding="utf-8") as f:
+        manifest = yaml.safe_load(f)
+    for model in manifest.get("models", []):
+        if not model.get("enabled", False):
+            continue
+        names = {
+            data["path"]: data["name"]
+            for category in ("inputs", "outputs", "states")
+            for data in model.get(category, [])
+        }
+        for hook in model.get("hooks", []):
+            if hook.get("action") == "read":
+                READ_NAMES.extend(names[path] for path in hook.get("data", []))
 
 
 def get_df() -> DataFrame:

@@ -1,5 +1,6 @@
 # Demos
 
-These folder collects the configurations for the demos. 
-Copy the cofigurations in the `simulator` folder before execution.
-Remember to update the addresses of signal and state variables according to your local environment.
+This folder contains manifest-only demo scenarios. Client Make targets select
+`Mx_Cy.river.yaml` as `simulator/manifest.yaml` before a run. Each manifest is
+validated against its declared binary, so regenerate/update it when rebuilding
+or relocating a model.

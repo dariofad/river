@@ -3,38 +3,40 @@ import argparse
 import json
 import subprocess
 
+import yaml
+
 maps = {"uprobe_read_i", "uprobe_read_o", "uprobe_timer", "uprobe_write_i"}
 
 
-def parse_configuration(configuration: str) -> dict:
+def parse_manifest(manifest_path: str) -> dict:
     config = dict()
     config["uprobe_timer"] = {"nof_signals": 1}
     try:
-        with open(configuration) as file:
-            c = json.load(file)
-        config["mm_ratio"] = c["MINOR_TO_MAJOR_RATIO"]
-        config["nof_cycles"] = c["NOF_CYCLES"]
-        nof_signals = 0
-        if c["WRITE_TIMING_I"]:
-            nof_signals = len(c["WRITE_TIMING_I"]["SIGNALS"])
-        config["uprobe_write_i"] = {"nof_signals": nof_signals}
-        nof_signals = 0
-        if c["READ_TIMING_I"]:
-            nof_signals = len(c["READ_TIMING_I"]["SIGNALS"])
-        config["uprobe_read_i"] = {"nof_signals": nof_signals}
-        nof_signals = 0
-        if c["READ_TIMING_O"]:
-            nof_signals = len(c["READ_TIMING_O"]["SIGNALS"])
-        config["uprobe_read_o"] = {"nof_signals": nof_signals}
+        with open(manifest_path) as file:
+            manifest = yaml.safe_load(file)
+        config["mm_ratio"] = manifest["settings"]["sample_every"]
+        config["nof_cycles"] = manifest["settings"]["cycles"]
+        reads = writes = 0
+        for model in manifest["models"]:
+            if not model.get("enabled", False):
+                continue
+            for hook in model.get("hooks", []):
+                if hook["action"] == "read":
+                    reads += len(hook["data"])
+                elif hook["action"] == "write":
+                    writes += len(hook["data"])
+        config["uprobe_write_i"] = {"nof_signals": writes}
+        config["uprobe_read_i"] = {"nof_signals": reads}
+        config["uprobe_read_o"] = {"nof_signals": 0}
     except FileNotFoundError:
-        print(f"Error: The file '{configuration}' was not found.")
-    except json.JSONDecodeError:
-        print("Error: Could not decode JSON from the file.")
+        print(f"Error: The file '{manifest_path}' was not found.")
+    except yaml.YAMLError:
+        print("Error: Could not decode YAML manifest.")
     return config
 
 
-def parse_stats(filename: str, configuration: str) -> tuple[dict, dict]:
-    config = parse_configuration(configuration)
+def parse_stats(filename: str, manifest_path: str) -> tuple[dict, dict]:
+    config = parse_manifest(manifest_path)
     stats = dict()
     try:
         with open(filename) as file:
@@ -88,7 +90,7 @@ def main() -> None:
         )
     )
     parser.add_argument("--filename", type=str, help="bpftool JSON report file")
-    parser.add_argument("--configuration", type=str, help="configuration")
+    parser.add_argument("--manifest", type=str, help="River manifest")
     args = parser.parse_args()
     with open(args.filename + ".json", "w") as f:
         subprocess.run(
@@ -96,7 +98,7 @@ def main() -> None:
             stdout=f,
             stderr=subprocess.STDOUT,
         )
-    config, stats = parse_stats(args.filename + ".json", args.configuration)
+    config, stats = parse_stats(args.filename + ".json", args.manifest)
     extract_stats(config, stats)
 
 

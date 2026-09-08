@@ -1,0 +1,42 @@
+version: 1
+artifact:
+    binary: /home/matt/cps/sim2cpp/ToyModel/Simulink2Code_ert_rtw/Simulink2Code
+    build_id: sha256:9616b2d5928d6ef628761d2f450b3679af5276d14de00eea010ed132c301356f
+settings:
+    cycles: 20
+    sample_every: 1
+    timer_model: Simulink2Code
+    timer_hook: step
+models:
+    - name: Simulink2Code
+      enabled: true
+      hooks:
+        - id: step
+          phase: post_outputs
+          action: read
+          data:
+            - Simulink2Code.Simulink2Code_U.x
+            - Simulink2Code.Simulink2Code_U.y
+            - Simulink2Code.Simulink2Code_Y.result
+      available_hooks:
+        - id: getRTM
+        - id: initialize
+        - id: step
+        - id: terminate
+      inputs:
+        - name: x
+          path: Simulink2Code.Simulink2Code_U.x
+          category: input
+          type: float64
+          supported: true
+        - name: "y"
+          path: Simulink2Code.Simulink2Code_U.y
+          category: input
+          type: float64
+          supported: true
+      outputs:
+        - name: result
+          path: Simulink2Code.Simulink2Code_Y.result
+          category: output
+          type: float64
+          supported: true

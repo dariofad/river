@@ -1,0 +1,170 @@
+version: 1
+artifact:
+    binary: /home/matt/cps/sim2cpp/DualACC/dualACC
+    build_id: sha256:05f468b9b64104c6ea6503fd7c5fe6e9f49fe182ebeef259cece500ec758139a
+settings:
+    cycles: 800
+    sample_every: 3
+    timer_model: egoCar
+    timer_hook: step
+models:
+    - name: egoCar
+      enabled: true
+      hooks:
+        - id: step
+          phase: entry
+          action: write
+          data:
+            - egoCar.egoCar_Y.d_rel
+        - id: step
+          phase: post_outputs
+          action: read
+          data:
+            - egoCar.egoCar_Y.v_ego
+            - egoCar.egoCar_Y.a_ego
+      available_hooks:
+        - id: egoCar_DataTypeConversion_L0
+        - id: egoCar_DropConstraint
+        - id: egoCar_KWIKfactor
+        - id: egoCar_derivatives
+        - id: egoCar_maximum
+        - id: egoCar_norm
+        - id: egoCar_qpkwik
+        - id: egoCar_xgemv
+        - id: egoCar_xgerc
+        - id: egoCar_xnrm2
+        - id: getRTM
+        - id: initialize
+        - id: rt_ertODEUpdateContinuousStates
+        - id: setExternalInputs
+        - id: step
+        - id: terminate
+      inputs:
+        - name: d_lead
+          path: egoCar.egoCar_U.d_lead
+          category: input
+          type: float64
+          supported: true
+        - name: v_lead
+          path: egoCar.egoCar_U.v_lead
+          category: input
+          type: float64
+          supported: true
+      outputs:
+        - name: d_rel
+          path: egoCar.egoCar_Y.d_rel
+          category: output
+          type: float64
+          supported: true
+        - name: v_rel
+          path: egoCar.egoCar_Y.v_rel
+          category: output
+          type: float64
+          supported: true
+        - name: v_ego
+          path: egoCar.egoCar_Y.v_ego
+          category: output
+          type: float64
+          supported: true
+        - name: a_ego
+          path: egoCar.egoCar_Y.a_ego
+          category: output
+          type: float64
+          supported: true
+      states:
+        - name: last_mv_DSTATE
+          path: egoCar.egoCar_DW.last_mv_DSTATE
+          category: block_state
+          type: float64
+          supported: true
+        - name: last_x_PreviousInput
+          path: egoCar.egoCar_DW.last_x_PreviousInput
+          category: block_state
+          type: '[4]real_T'
+          supported: false
+          reason: only scalar primitive values are supported
+        - name: Memory_PreviousInput
+          path: egoCar.egoCar_DW.Memory_PreviousInput
+          category: block_state
+          type: '[96]boolean_T'
+          supported: false
+          reason: only scalar primitive values are supported
+        - name: TransferFcn_CSTATE
+          path: egoCar.egoCar_X.TransferFcn_CSTATE
+          category: continuous_state
+          type: float64
+          supported: true
+        - name: Integrator1_CSTATE
+          path: egoCar.egoCar_X.Integrator1_CSTATE
+          category: continuous_state
+          type: float64
+          supported: true
+        - name: Integrator_CSTATE
+          path: egoCar.egoCar_X.Integrator_CSTATE
+          category: continuous_state
+          type: float64
+          supported: true
+    - name: leadCar
+      enabled: false
+      hooks:
+        - id: step
+          phase: post_outputs
+          action: read
+          data:
+            - leadCar.leadCar_Y.a_lead
+            - leadCar.leadCar_Y.d_lead
+            - leadCar.leadCar_Y.v_lead
+      available_hooks:
+        - id: getRTM
+        - id: initialize
+        - id: leadCar_derivatives
+        - id: rt_ertODEUpdateContinuousStates
+        - id: step
+        - id: terminate
+      outputs:
+        - name: a_lead
+          path: leadCar.leadCar_Y.a_lead
+          category: output
+          type: float64
+          supported: true
+        - name: d_lead
+          path: leadCar.leadCar_Y.d_lead
+          category: output
+          type: float64
+          supported: true
+        - name: v_lead
+          path: leadCar.leadCar_Y.v_lead
+          category: output
+          type: float64
+          supported: true
+      states:
+        - name: lastSin
+          path: leadCar.leadCar_DW.lastSin
+          category: block_state
+          type: float64
+          supported: true
+        - name: lastCos
+          path: leadCar.leadCar_DW.lastCos
+          category: block_state
+          type: float64
+          supported: true
+        - name: systemEnable
+          path: leadCar.leadCar_DW.systemEnable
+          category: block_state
+          type: int32
+          supported: true
+        - name: Integrator1_CSTATE
+          path: leadCar.leadCar_X.Integrator1_CSTATE
+          category: continuous_state
+          type: float64
+          supported: true
+        - name: TransferFcn_CSTATE
+          path: leadCar.leadCar_X.TransferFcn_CSTATE
+          category: continuous_state
+          type: float64
+          supported: true
+        - name: Integrator_CSTATE
+          path: leadCar.leadCar_X.Integrator_CSTATE
+          category: continuous_state
+          type: float64
+          supported: true
