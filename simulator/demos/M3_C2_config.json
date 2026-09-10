@@ -11,12 +11,12 @@
         {
           "NAME": "PANGLE",
           "TYPE": "float64",
-          "ADDR": "14720"
+          "ADDR": "30698"
         },
         {
           "NAME": "RPM",
           "TYPE": "float64",
-          "ADDR": "14728"
+          "ADDR": "306a0"
         }
       ]
     }
@@ -24,22 +24,22 @@
   "READS": [
     {
       "SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
-      "OFFSET": "4479",
+      "OFFSET": "4428",
       "SIGNALS": [
         {
           "NAME": "PANGLE",
           "TYPE": "float64",
-          "ADDR": "14720"
+          "ADDR": "30698"
         },
         {
           "NAME": "AF",
           "TYPE": "float64",
-          "ADDR": "14738"
+          "ADDR": "306b0"
         },
         {
           "NAME": "CMODE",
           "TYPE": "float64",
-          "ADDR": "14740"
+          "ADDR": "306b8"
         }
       ]
     }

@@ -7,43 +7,43 @@
   "READS": [
     {
       "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "74",
+      "OFFSET": "80",
       "SIGNALS": [
         {
           "NAME": "Xr0",
           "TYPE": "float64",
-          "ADDR": "4048"
+          "ADDR": "20020"
         },
         {
           "NAME": "Yr0",
           "TYPE": "float64",
-          "ADDR": "4050"
+          "ADDR": "20028"
         }
       ]
     },
     {
       "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "79",
+      "OFFSET": "92",
       "SIGNALS": [
         {
           "NAME": "Xr1",
           "TYPE": "float64",
-          "ADDR": "4048"
+          "ADDR": "20020"
         },
         {
           "NAME": "Yr1",
           "TYPE": "float64",
-          "ADDR": "4050"
+          "ADDR": "20028"
         },
         {
           "NAME": "RES",
           "TYPE": "float64",
-          "ADDR": "4058"
+          "ADDR": "20030"
         },
         {
           "NAME": "MOFFSET",
           "TYPE": "float64",
-          "ADDR": "4040"
+          "ADDR": "20018"
         }
       ]
     }

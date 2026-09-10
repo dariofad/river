@@ -11,7 +11,7 @@
         {
           "NAME": "DREL",
           "TYPE": "float64",
-          "ADDR": "1a350"
+          "ADDR": "30328"
         }
       ]
     }
@@ -19,17 +19,17 @@
   "READS": [
     {
       "SYMBOL": "_ZN6egoCar4stepEv",
-      "OFFSET": "4825",
+      "OFFSET": "3936",
       "SIGNALS": [
         {
           "NAME": "AEGO",
           "TYPE": "float64",
-          "ADDR": "1a368"
+          "ADDR": "30340"
         },
         {
           "NAME": "VEGO",
           "TYPE": "float64",
-          "ADDR": "1a360"
+          "ADDR": "30338"
         }
       ]
     }
