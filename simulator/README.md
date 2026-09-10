@@ -103,19 +103,68 @@ each sampled record and drives the configured-cycle termination condition.
 4. Validate the JSON before running a simulation:
 
    ```bash
-   jq empty simulator/config.json
+   jq . simulator/config.json > /dev/null
    ```
 
 ## Existing demo probe sites
 
-The checked-in templates have been aligned with the binaries under
-`/home/matt/cps/sim2cpp`:
+In `simulator/demos/` there are examples of offsets and all `ADDR` values for
+the binaries reported in the companion repository. Recalculate them after
+recompiling a model or switching to another executable. See below as an example.
 
-| Model | Write offset | Read offset |
-| --- | ---: | ---: |
-| DualACC (M1) | 308 | 4825 |
-| ToyModel (M2) | 74 | 74 and 79 |
-| Abstract Fuel Control (M3) | 0 | 4479 |
+### Model 1
 
-These offsets and all `ADDR` values are tied to those binaries. Recalculate
-them after recompiling a model or switching to another executable.
+```bash
+nm -C --defined-only dualACC | rg 'egoCar::step()' # 4a14
+gdb -q dualACC
+p/x &ego.egoCar_Y.d_rel # 30328
+info line egoCar.cpp:2301 # 0x4b48 (symbol + 308)
+p/x &ego.egoCar_Y.a_ego # 30340
+p/x &ego.egoCar_Y.v_ego # 30338
+p/x &ego.egoCar_Y.v_rel # 30330
+p/x &ego.egoCar_U.d_lead # 30318
+p/x &ego.egoCar_X.Integrator1_CSTATE # 30470
+info line egoCar.cpp:2551 # 0x5974 (symbol + 3936)
+```
+
+### Model 2
+
+```bash
+nm -C --defined-only Simulink2Code | rg '::step()' # 1888
+gdb -q Simulink2Code
+info line main.cpp:61 # 80
+info line main.cpp:64 # 92
+p/x &Simulink2Code_Obj.Simulink2Code_U.x # 20020
+p/x &Simulink2Code_Obj.Simulink2Code_U.y # 20028
+p/x &Simulink2Code_Obj.Simulink2Code_Y.result # 20030
+p/x &Simulink2Code_Obj.model_offset # 20018
+```
+
+### Model 3
+
+```bash
+nm -C --defined-only fuel_control  | grep -i "::step()" # 30f0
+gdb -q fuel_control
+p/x &model.AbstractFuelControl_M1_U.PedalAngle # 30698
+p/x &model.AbstractFuelControl_M1_U.EngineSpeed # 306a0
+p/x &model.AbstractFuelControl_M1_Y.AF # 306b0
+p/x &model.AbstractFuelControl_M1_Y.controller_mode # 306b8
+p/x &AbstractFuelControl_M1::AbstractFuelControl_M1_P.Baseopeningangle_Value # 30278
+info line AbstractFuelControl_M1.cpp:1065 # 4428
+```
+
+### Model 4
+
+```bash
+nm -C --defined-only Tester  | grep -i "::step()" # 17fc
+gdb -q Tester
+info line Tester.cpp:34 # 52
+info line Tester.cpp:36 # 80
+info line Tester.cpp:26 # 12
+info line Tester.cpp:32 # 36
+info line Tester.cpp:37 # 120
+p/x &m.extU.x # 20018
+p/x &m.extU.y # 20020
+p/x &m.extU.z # 20028
+p/x &m.offset # 20038
+```
