@@ -1,12 +1,13 @@
 {
   "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/ToyModel/Simulink2Code_ert_rtw/Simulink2Code",
-  "TIMER_SYMBOL": "_Z10rt_OneStepv",
+  "TIMER_SYMBOL": "_ZN13Simulink2Code4stepEv",
   "MINOR_TO_MAJOR_RATIO": "1",
   "NOF_CYCLES": "20",
-  "WRITES": [
+  "READS": [
     {
-      "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "0x80",
+      "SYMBOL": "_ZN13Simulink2Code4stepEv",
+      "OFFSET": "0x0",
+      "RETPROBE": true,
       "SIGNALS": [
         {
           "NAME": "x",
@@ -17,50 +18,34 @@
           "NAME": "y",
           "TYPE": "float64",
           "ADDR": "0x20028"
-        }
-      ]
-    }
-  ],
-  "READS": [
-    {
-      "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "0x80",
-      "SIGNALS": [
-        {
-          "NAME": "Xr0",
-          "TYPE": "float64",
-          "ADDR": "0x20020"
         },
         {
-          "NAME": "Yr0",
-          "TYPE": "float64",
-          "ADDR": "0x20028"
-        }
-      ]
-    },
-    {
-      "SYMBOL": "_Z10rt_OneStepv",
-      "OFFSET": "0x92",
-      "SIGNALS": [
-        {
-          "NAME": "Xr1",
-          "TYPE": "float64",
-          "ADDR": "0x20020"
-        },
-        {
-          "NAME": "Yr1",
-          "TYPE": "float64",
-          "ADDR": "0x20028"
-        },
-        {
-          "NAME": "RESr1",
+          "NAME": "result",
           "TYPE": "float64",
           "ADDR": "0x20030"
         },
         {
-          "NAME": "MOFFSETr1",
+          "NAME": "moffset",
           "TYPE": "float64",
           "ADDR": "0x20018"
+        }
+      ]
+    }
+  ],
+  "WRITES": [
+    {
+      "SYMBOL": "_ZN13Simulink2Code4stepEv",
+      "OFFSET": "0x0",
+      "SIGNALS": [
+        {
+          "NAME": "x",
+          "TYPE": "float64",
+          "ADDR": "0x20020"
+        },
+        {
+          "NAME": "y",
+          "TYPE": "float64",
+          "ADDR": "0x20028"
         }
       ]
     }

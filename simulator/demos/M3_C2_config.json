@@ -3,6 +3,29 @@
   "TIMER_SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
   "MINOR_TO_MAJOR_RATIO": "3",
   "NOF_CYCLES": "1001",
+  "READS": [
+    {
+      "SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
+      "OFFSET": "0x114c",
+      "SIGNALS": [
+        {
+          "NAME": "PedalAngle",
+          "TYPE": "float64",
+          "ADDR": "0x30698"
+        },
+        {
+          "NAME": "AF",
+          "TYPE": "float64",
+          "ADDR": "0x306b0"
+        },
+        {
+          "NAME": "controller_mode",
+          "TYPE": "float64",
+          "ADDR": "0x306b8"
+        }
+      ]
+    }
+  ],
   "WRITES": [
     {
       "SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
@@ -17,29 +40,6 @@
           "NAME": "EngineSpeed",
           "TYPE": "float64",
           "ADDR": "0x306a0"
-        }
-      ]
-    }
-  ],
-  "READS": [
-    {
-      "SYMBOL": "_ZN22AbstractFuelControl_M14stepEv",
-      "OFFSET": "0x4428",
-      "SIGNALS": [
-        {
-          "NAME": "PANGLE",
-          "TYPE": "float64",
-          "ADDR": "0x30698"
-        },
-        {
-          "NAME": "AF",
-          "TYPE": "float64",
-          "ADDR": "0x306b0"
-        },
-        {
-          "NAME": "CMODE",
-          "TYPE": "float64",
-          "ADDR": "0x306b8"
         }
       ]
     }

@@ -3,53 +3,53 @@
   "TIMER_SYMBOL": "_ZN6egoCar4stepEv",
   "MINOR_TO_MAJOR_RATIO": "3",
   "NOF_CYCLES": "451",
-  "WRITES": [
-    {
-      "SYMBOL": "_ZN6egoCar4stepEv",
-      "OFFSET": "0x308",
-      "SIGNALS": [
-        {
-          "NAME": "DREL",
-          "TYPE": "float64",
-          "ADDR": "0x30328"
-        }
-      ]
-    }
-  ],
   "READS": [
     {
       "SYMBOL": "_ZN6egoCar4stepEv",
-      "OFFSET": "0x3936",
+      "OFFSET": "0xe78",
       "SIGNALS": [
         {
-          "NAME": "DRELv1",
-          "TYPE": "float64",
-          "ADDR": "0x30328"
-        },
-        {
-          "NAME": "AEGO",
-          "TYPE": "float64",
-          "ADDR": "0x30340"
-        },
-        {
-          "NAME": "VEGO",
-          "TYPE": "float64",
-          "ADDR": "0x30338"
-        },
-        {
-          "NAME": "VREL",
-          "TYPE": "float64",
-          "ADDR": "0x30330"
-        },
-        {
-          "NAME": "DLEAD",
+          "NAME": "d_lead",
           "TYPE": "float64",
           "ADDR": "0x30318"
         },
         {
-          "NAME": "APOS",
+          "NAME": "d_rel",
+          "TYPE": "float64",
+          "ADDR": "0x30328"
+        },
+        {
+          "NAME": "v_rel",
+          "TYPE": "float64",
+          "ADDR": "0x30330"
+        },
+        {
+          "NAME": "v_ego",
+          "TYPE": "float64",
+          "ADDR": "0x30338"
+        },
+        {
+          "NAME": "a_ego",
+          "TYPE": "float64",
+          "ADDR": "0x30340"
+        },
+        {
+          "NAME": "apos",
           "TYPE": "float64",
           "ADDR": "0x30470"
+        }
+      ]
+    }
+  ],
+  "WRITES": [
+    {
+      "SYMBOL": "_ZN6egoCar4stepEv",
+      "OFFSET": "0x134",
+      "SIGNALS": [
+        {
+          "NAME": "d_rel",
+          "TYPE": "float64",
+          "ADDR": "0x30328"
         }
       ]
     }
