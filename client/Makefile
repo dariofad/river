@@ -29,6 +29,7 @@ list:
 	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=1 C=2"
 	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=2 C=1"
 	@printf "make %$(WIDTH)s %s\t%s\n" "$(SIGN)"  "M=3 C=2"
+	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=1 C=3"
 	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=2 C=1"
 	@printf "make %$(WIDTH)s %s\t%s\n" "$(STATE)" "M=3 C=3"
 
@@ -37,23 +38,23 @@ clean_cache:
 	@ docker exec redis redis-cli DEL "simulation" "simulation:0"
 
 monit: clean_cache
-	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+	@ cp ../simulator/demos/M$(M)_C$(C)_config.json ../simulator/config.json
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
 	@ uv run monit.py $(HOST) $(M) $(C)
 
 fals: clean_cache
-	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+	@ cp ../simulator/demos/M$(M)_C$(C)_config.json ../simulator/config.json
 	@ uv run fals.py $(HOST) $(M) $(C)
 
 sign: clean_cache
-	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+	@ cp ../simulator/demos/M$(M)_C$(C)_config.json ../simulator/config.json
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
 	@ uv run sign.py $(HOST) $(M) $(C)
 
 state: clean_cache
-	@ cp ../simulator/M$(M)_C$(C)_config.json ../simulator/config.json
+	@ cp ../simulator/demos/M$(M)_C$(C)_config.json ../simulator/config.json
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/config.json
 	@ uv run state.py $(HOST) $(M) $(C)
