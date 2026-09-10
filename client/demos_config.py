@@ -131,6 +131,7 @@ def state_M2_C1_perturbation(PERIOD: int = 0, ITERNO: int = 0) -> list:
     perturbation["TIME"] = TIME
     perturbation["VALUE_SIZE"] = VALUE_SIZE
     perturbation["ADDR"] = ADDR
+    perturbation["TYPE"] = "float64"
     perturbation["VALUE"] = VALUE
     return [perturbation]
 
