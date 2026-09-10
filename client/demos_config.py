@@ -65,7 +65,7 @@ def sign_M1_C2_trajectory(CYCLES: int = 0) -> dict:
 
 def sign_M1_C2_perturbation(PERIOD: int = 0, ITERNO: int = 0) -> dict:
     drel = np.array([100.0], dtype=np.float64)
-    PERIOD_START = 800
+    PERIOD_START = 798
     time_trace = [PERIOD_START]
     perturbation = dict()
     perturbation["d_rel"] = drel.tolist()
@@ -83,8 +83,8 @@ def sign_M2_C1_trajectory(CYCLES: int = 0) -> dict:
 
 
 def sign_M2_C1_perturbation(PERIOD: int = 0, ITERNO: int = 0) -> dict:
-    X = np.array([0.001 * (i + 1) for i in range(PERIOD)], dtype=np.float64)
-    Y = np.array([0.02 for _ in range(PERIOD)], dtype=np.float64)
+    X = np.array([0.001 * (i + 1) for i in range(PERIOD // 2)], dtype=np.float64)
+    Y = np.array([0.02 for _ in range(PERIOD // 2)], dtype=np.float64)
     PERIOD_START = 0 if ITERNO == 0 else PERIOD + random.randint(0, PERIOD // 2)
     time_trace = [PERIOD_START + i for i in range(PERIOD // 2)]
     perturbation = dict()
