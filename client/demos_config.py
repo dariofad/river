@@ -125,7 +125,7 @@ def state_M2_C1_trajectory(CYCLES: int = 0) -> dict:
 def state_M2_C1_perturbation(PERIOD: int = 0, ITERNO: int = 0) -> list:
     TIME = np.uint32(5).item()
     VALUE_SIZE = np.uint32(8).item()
-    ADDR = np.uint64(0xAAAAAAAC0018).item()
+    ADDR = np.uint64(0x20018).item()  # replace according to your binary
     VALUE = np.uint64(50).item()
     perturbation = dict()
     perturbation["TIME"] = TIME
@@ -147,7 +147,7 @@ def state_M3_C3_trajectory(CYCLES: int = 0) -> dict:
 def state_M3_C3_perturbation(PERIOD: int = 0, ITERNO: int = 0) -> list | None:
     TIME = np.uint32(50).item()
     VALUE_SIZE = np.uint32(8).item()
-    ADDR = np.uint64(0xAAAAAAAD0278).item()
+    ADDR = np.uint64(0x30278).item()
     VALUE = np.float64(16).item()
     perturbation = dict()
     perturbation["TIME"] = TIME
