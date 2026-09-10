@@ -154,6 +154,7 @@ def state_M3_C3_perturbation(PERIOD: int = 0, ITERNO: int = 0) -> list | None:
     perturbation["TIME"] = TIME
     perturbation["VALUE_SIZE"] = VALUE_SIZE
     perturbation["ADDR"] = ADDR
+    perturbation["TYPE"] = "float64"
     perturbation["VALUE"] = VALUE
     #    return None
     return [perturbation]
