@@ -1,4 +1,4 @@
-.PHONY: all build run generate vmlinux aslr_off redis start_redis stop_redis bench check-env clean
+.PHONY: all build run generate vmlinux redis start_redis stop_redis bench check-env clean
 
 EBPF_PROBE = probe
 GO_MODULE = river
@@ -46,10 +46,7 @@ start_redis:
 stop_redis:
 	docker stop redis
 
-aslr_off:
-	echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
-
-_run: | aslr_off start_redis
+_run: | start_redis
 	sudo su -c 'rm -rf /sys/fs/bpf/sequence_*'
 	sudo su -c 'rm -rf /sys/fs/bpf/pertbuf*'
 	sudo su -c 'rm -rf /sys/fs/bpf/state_pertbuf*'

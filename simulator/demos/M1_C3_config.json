@@ -1,55 +1,57 @@
 {
-    "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/DualACC/dualACC",
-    "TIMER_SYMBOL": "_ZN6egoCar4stepEv",
-    "MINOR_TO_MAJOR_RATIO": "3",
-    "NOF_CYCLES": "451",
-    "WRITE_TIMING_I": {
-	"SYMBOL": "_ZN6egoCar4stepEv",
-	"OFFSET":  "308",
-	"SIGNALS": [
-	    {
-		"SIGN_NAME": "DREL",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0328"
-	    }
-	]
-    }, 
-    "READ_TIMING_I": null, 
-    "READ_TIMING_O": {
-	"SYMBOL": "_ZN6egoCar4stepEv",
-	"OFFSET":  "3936",
-	"SIGNALS": [
-	    {
-		"SIGN_NAME": "DREL",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0328"
-	    },	    
-	    {
-		"SIGN_NAME": "AEGO",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0340"
-	    },
-	    {
-		"SIGN_NAME": "VEGO",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0338"
-	    },
-	    {
-		"SIGN_NAME": "VREL",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0330"
-	    },
-	    {
-		"SIGN_NAME": "DLEAD",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0318"
-	    },
-	    {
-		"SIGN_NAME": "APOS",
-		"SIGN_TYPE": "float64",
-		"SIGN_ADDR": "aaaaaaad0470"
-	    }
-	]
+  "MODEL_PATH": "/home/dd/git/git_unibg/sim2cpp/DualACC/dualACC",
+  "TIMER_SYMBOL": "_ZN6egoCar4stepEv",
+  "MINOR_TO_MAJOR_RATIO": "3",
+  "NOF_CYCLES": "451",
+  "WRITES": [
+    {
+      "SYMBOL": "_ZN6egoCar4stepEv",
+      "OFFSET": "308",
+      "SIGNALS": [
+        {
+          "NAME": "DREL",
+          "TYPE": "float64",
+          "ADDR": "30328"
+        }
+      ]
     }
+  ],
+  "READS": [
+    {
+      "SYMBOL": "_ZN6egoCar4stepEv",
+      "OFFSET": "3936",
+      "SIGNALS": [
+        {
+          "NAME": "DRELv1",
+          "TYPE": "float64",
+          "ADDR": "30328"
+        },
+        {
+          "NAME": "AEGO",
+          "TYPE": "float64",
+          "ADDR": "30340"
+        },
+        {
+          "NAME": "VEGO",
+          "TYPE": "float64",
+          "ADDR": "30338"
+        },
+        {
+          "NAME": "VREL",
+          "TYPE": "float64",
+          "ADDR": "30330"
+        },
+        {
+          "NAME": "DLEAD",
+          "TYPE": "float64",
+          "ADDR": "30318"
+        },
+        {
+          "NAME": "APOS",
+          "TYPE": "float64",
+          "ADDR": "30470"
+        }
+      ]
+    }
+  ]
 }
-

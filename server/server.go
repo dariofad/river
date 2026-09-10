@@ -34,7 +34,7 @@ func StartService(port uint16, srv my_types.Service) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Print("%s server accepted connection, %s", srv.String(), err)
+			log.Printf("%s server accepted connection, %s", srv.String(), err)
 			continue
 		}
 		log.Printf("[->] %s server accepted connection", srv.String())
@@ -370,6 +370,7 @@ simulateAndPerturbState:
 	select {
 	case err = <-errCh:
 		log.Println("Error occurred during signal perturbation:", err)
+		sendSimulationAck(conn, []byte("ERROR: "+err.Error()))
 		return
 	default:
 		// no error

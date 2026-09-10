@@ -46,6 +46,7 @@ flycheck_*.el
 
 # generated ebpf code
 probe_bpf*
+riverprobe_bpf*
 
 # modules' binaries
 river

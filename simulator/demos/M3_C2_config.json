@@ -11,12 +11,12 @@
         {
           "NAME": "PANGLE",
           "TYPE": "float64",
-          "ADDR": "aaaaaaad0698"
+          "ADDR": "30698"
         },
         {
           "NAME": "RPM",
           "TYPE": "float64",
-          "ADDR": "aaaaaaad06a0"
+          "ADDR": "306a0"
         }
       ]
     }
@@ -29,17 +29,17 @@
         {
           "NAME": "PANGLE",
           "TYPE": "float64",
-          "ADDR": "aaaaaaad0698"
+          "ADDR": "30698"
         },
         {
           "NAME": "AF",
           "TYPE": "float64",
-          "ADDR": "aaaaaaad06b0"
+          "ADDR": "306b0"
         },
         {
           "NAME": "CMODE",
           "TYPE": "float64",
-          "ADDR": "aaaaaaad06b8"
+          "ADDR": "306b8"
         }
       ]
     }

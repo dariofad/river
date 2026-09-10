@@ -12,10 +12,11 @@ type ModelRecord struct {
 }
 
 type StateRecord struct {
-	Time      uint32  `msgpack:"TIME"`
-	ValueSize uint32  `msgpack:"VALUE_SIZE"`
-	Addr      uint64  `msgpack:"ADDR"`
-	Value     float64 `msgpack:"VALUE"`
+	Time      uint32 `msgpack:"TIME"`
+	ValueSize uint32 `msgpack:"VALUE_SIZE"`
+	// Addr is a virtual address in the target ELF image, not a runtime address.
+	Addr  uint64  `msgpack:"ADDR"`
+	Value float64 `msgpack:"VALUE"`
 }
 
 func ModelRecordToCSVString(record ModelRecord) string {
