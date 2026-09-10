@@ -1,0 +1,54 @@
+version: 1
+artifact:
+    binary: /home/dd/git/git_unibg/sim2cpp/ToyModel/Simulink2Code_ert_rtw/Simulink2Code
+    build_id: sha256:4b85301a0da2754f1667fc43befd48c7d504f74703bde000a7748dcd00bc7a88
+settings:
+    cycles: 20
+    sample_every: 1
+    timer_model: Simulink2Code
+    timer_hook: step
+models:
+    - name: Simulink2Code
+      enabled: true
+      hooks:
+        - id: step
+          phase: entry
+          action: write
+          data:
+            - Simulink2Code.Simulink2Code_U.x
+            - Simulink2Code.Simulink2Code_U.y
+        - id: step
+          phase: return
+          action: read
+          data:
+            - Simulink2Code.Simulink2Code_U.x
+            - Simulink2Code.Simulink2Code_U.y
+            - Simulink2Code.Simulink2Code_Y.result
+            - Simulink2Code.model_offset
+      available_hooks:
+        - id: getRTM
+        - id: initialize
+        - id: step
+        - id: terminate
+      inputs:
+        - name: x
+          path: Simulink2Code.Simulink2Code_U.x
+          category: input
+          type: float64
+          supported: true
+        - name: "y"
+          path: Simulink2Code.Simulink2Code_U.y
+          category: input
+          type: float64
+          supported: true
+      outputs:
+        - name: result
+          path: Simulink2Code.Simulink2Code_Y.result
+          category: output
+          type: float64
+          supported: true
+      states:
+        - name: moffset
+          path: Simulink2Code.model_offset
+          type: float64
+          address: 0x20018 
