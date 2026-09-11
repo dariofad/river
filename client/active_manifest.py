@@ -2,7 +2,6 @@ from pathlib import Path
 
 import yaml
 
-
 ACTIVE_MANIFEST = Path(__file__).parent.parent / "simulator" / "manifest.yaml"
 
 

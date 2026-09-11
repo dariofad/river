@@ -1,9 +1,9 @@
 from collections.abc import Awaitable
 
+import msgpack
 import pandas as pd
 import plotly.express as px
 import redis
-import msgpack
 import yaml
 from dash import Dash, Input, Output, dash_table, dcc, html
 from pandas.core.frame import DataFrame
