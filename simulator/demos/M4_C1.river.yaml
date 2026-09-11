@@ -1,7 +1,7 @@
 version: 1
 artifact:
-    binary: /home/matt/cps/sim2cpp/TestM/Tester
-    build_id: sha256:8abfb4ba9923653ad4f960152b2503a646b054be4e39e7af432d6fd3e30fcc73
+    binary: /home/dd/git/git_unibg/sim2cpp/TestM/Tester
+    build_id: sha256:fefab53d0d79d52811088c24b5d5ff7909697c13d008cccd024d3b739d8d0f2d
 settings:
     cycles: 10
     sample_every: 1
@@ -32,33 +32,33 @@ models:
       inputs:
         - name: x
           path: Tester.extU.x
-          address: 0x4040
+          address: 0x20010
           category: input
           type: float64
           supported: true
         - name: y
           path: Tester.extU.y
-          address: 0x4048
+          address: 0x20018
           category: input
           type: float64
           supported: true
         - name: z
           path: Tester.extU.z
-          address: 0x4050
+          address: 0x20020
           category: input
           type: float64
           supported: true
       outputs:
         - name: res
           path: Tester.extY.res
-          address: 0x4058
+          address: 0x20028
           category: output
           type: float64
           supported: true
       states:
         - name: offset
           path: Tester.offset
-          address: 0x4060
+          address: 0x20030
           category: block_state
           type: float64
           supported: true

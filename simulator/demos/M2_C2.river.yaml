@@ -1,7 +1,7 @@
 version: 1
 artifact:
-    binary: /home/matt/cps/sim2cpp/ToyModel/Simulink2Code_ert_rtw/Simulink2Code
-    build_id: sha256:9616b2d5928d6ef628761d2f450b3679af5276d14de00eea010ed132c301356f
+    binary: /home/dd/git/git_unibg/sim2cpp/ToyModel/Simulink2Code_ert_rtw/Simulink2Code
+    build_id: sha256:4b85301a0da2754f1667fc43befd48c7d504f74703bde000a7748dcd00bc7a88
 settings:
     cycles: 20
     sample_every: 1

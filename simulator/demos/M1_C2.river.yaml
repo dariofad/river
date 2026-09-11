@@ -1,7 +1,7 @@
 version: 1
 artifact:
-    binary: /home/matt/cps/sim2cpp/DualACC/dualACC
-    build_id: sha256:05f468b9b64104c6ea6503fd7c5fe6e9f49fe182ebeef259cece500ec758139a
+    binary: /home/dd/git/git_unibg/sim2cpp/DualACC/dualACC
+    build_id: sha256:e89032e60f06cbadda4601e5788cc093e2f6c6bb85696b536a79026842883e09
 settings:
     cycles: 800
     sample_every: 3
