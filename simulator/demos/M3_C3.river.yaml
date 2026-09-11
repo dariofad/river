@@ -314,7 +314,7 @@ models:
           category: parameter
           type: float64
           supported: true
-        - name: Baseopeningangle_Value
+        - name: Baseopeningangle
           path: AbstractFuelControl_M1.AbstractFuelControl_M1_P.Baseopeningangle_Value
           category: parameter
           type: float64

@@ -12,10 +12,16 @@ models:
       enabled: true
       hooks:
         - id: step
-          phase: entry
+          phase: custom
+          offset: 0x34 
           action: write
           data:
             - Tester.extU.y
+        - id: step
+          phase: custom
+          offset: 0x50 
+          action: write
+          data:
             - Tester.extU.z
         - id: step
           phase: return
@@ -24,8 +30,8 @@ models:
             - Tester.extU.x
             - Tester.extU.y
             - Tester.extU.z
-            - Tester.extY.res
             - Tester.offset
+            - Tester.extY.res
       available_hooks:
         - id: step
           symbol: _ZN6Tester4stepEv

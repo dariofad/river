@@ -3,7 +3,7 @@ artifact:
     binary: /home/dd/git/git_unibg/sim2cpp/DualACC/dualACC
     build_id: sha256:e89032e60f06cbadda4601e5788cc093e2f6c6bb85696b536a79026842883e09
 settings:
-    cycles: 800
+    cycles: 451
     sample_every: 3
     timer_model: egoCar
     timer_hook: step
@@ -12,7 +12,8 @@ models:
       enabled: true
       hooks:
         - id: step
-          phase: entry
+          phase: custom
+          offset: 0x134
           action: write
           data:
             - egoCar.egoCar_Y.d_rel
@@ -25,6 +26,7 @@ models:
             - egoCar.egoCar_Y.v_rel
             - egoCar.egoCar_Y.v_ego
             - egoCar.egoCar_Y.a_ego
+            - egoCar.egoCar_X.Integrator1_CSTATE
       available_hooks:
         - id: egoCar_DataTypeConversion_L0
         - id: egoCar_DropConstraint

@@ -12,7 +12,8 @@ models:
       enabled: true
       hooks:
         - id: step
-          phase: entry
+          phase: custom
+          offset: 0x134
           action: write
           data:
             - egoCar.egoCar_Y.d_rel
@@ -22,6 +23,7 @@ models:
           data:
             - egoCar.egoCar_Y.v_ego
             - egoCar.egoCar_Y.a_ego
+            - egoCar.egoCar_Y.d_rel
       available_hooks:
         - id: egoCar_DataTypeConversion_L0
         - id: egoCar_DropConstraint

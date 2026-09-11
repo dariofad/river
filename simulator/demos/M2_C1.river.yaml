@@ -18,12 +18,13 @@ models:
             - Simulink2Code.Simulink2Code_U.x
             - Simulink2Code.Simulink2Code_U.y
         - id: step
-          phase: post_outputs
+          phase: return
           action: read
           data:
             - Simulink2Code.Simulink2Code_U.x
             - Simulink2Code.Simulink2Code_U.y
             - Simulink2Code.Simulink2Code_Y.result
+            - Simulink2Code.model_offset
       available_hooks:
         - id: getRTM
         - id: initialize
@@ -46,3 +47,8 @@ models:
           category: output
           type: float64
           supported: true
+      states:
+        - name: moffset
+          path: Simulink2Code.model_offset
+          type: float64
+          address: 0x20018 
