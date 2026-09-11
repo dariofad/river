@@ -111,7 +111,7 @@ def update_dashboard(n):
         title=f"Time series ({len(signal_cols)} signals detected)",
         labels={"value": "Signal Value", "variable": "Signals"},
     )
-    fig.update_layout(xaxis_title="Loop cycle")
+    fig.update_layout(xaxis_title="Loop cycle", uirevision="constant")
 
     # table data
     table_data = df.to_dict("records")
