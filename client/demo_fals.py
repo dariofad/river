@@ -26,7 +26,7 @@ def generate_trajectory(model: str, config: str) -> dict:
             "EngineSpeed": ebpf_format(t / 100000.0, "float64"),
         }
 
-    print(f"Warning: No predefined trajectory for M{model}_C{config}. Sending empty.")
+    print(f"Warning: No predefined trajectory for m{model}_c{config}. Sending empty.")
     return {}
 
 

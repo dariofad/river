@@ -13,9 +13,9 @@ Use them to test the simulation server and analyze the approach.
   files have been adapted to your local environment (see
   `../simulator/README.md`)
 - Check the list of available demos with `make`
-- Use the Makefile variables `HOST`, `M` and `C` to customize your
+- Use the Makefile variables `HOST`, `m` and `c` to customize your
   test
-- Run a demo, for example with `make monit M=1 C=1` (default `HOST`
+- Run a demo, for example with `make monit m=1 c=1` (default `HOST`
   is 127.0.0.1)
 
 For the live state perturbation demos, make sure the address of the

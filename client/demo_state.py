@@ -29,7 +29,7 @@ def generate_trajectory(model: str, config: str) -> dict:
     elif model == "1" and config == "3":
         return {"d_rel": ebpf_format(np.zeros(451), "float64")}
 
-    print(f"Warning: No predefined trajectory for M{model}_C{config}. Sending empty.")
+    print(f"Warning: No predefined trajectory for m{model}_c{config}. Sending empty.")
     return {}
 
 

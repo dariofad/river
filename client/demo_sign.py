@@ -38,7 +38,7 @@ def generate_trajectory(model: str, config: str) -> dict:
 
     else:
         print(
-            f"Warning: No predefined trajectory for M{model}_C{config}. Sending empty."
+            f"Warning: No predefined trajectory for m{model}_c{config}. Sending empty."
         )
         return {}
 

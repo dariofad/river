@@ -9,7 +9,7 @@ The client demo targets select one checked-in scenario manifest atomically:
 
 ```bash
 cd client
-make monit M=3 C=1
+make monit m=3 c=1
 ```
 
 The active-manifest workflow supports one selected demo at a time. Do not
@@ -70,7 +70,7 @@ booleans. State perturbation messages must specify `TYPE`, matching
 
 ## Demo manifests
 
-`simulator/demos/Mx_Cy.river.yaml` replaces the former JSON demo
+`simulator/demos/mx_cy.river.yaml` replaces the former JSON demo
 configuration. Each contains the binary, timing, hook selection, and selected
 signals for its client scenario. The `client` Make targets atomically install
 the chosen one as `simulator/manifest.yaml` before contacting River.
