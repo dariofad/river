@@ -53,13 +53,13 @@ class RiverSession:
         self.sock.sendall(payload)
 
     def wait_for_ack(self, bufsize: int = 64) -> str:
-        """Waits for a standard string ACK (e.g., in sign.py or state.py)."""
+        """Waits for a standard string ACK (e.g., in demo_sign.py or demo_state.py)."""
         if not self.sock:
             raise RuntimeError("Socket not connected.")
         return self.sock.recv(bufsize).decode("utf-8")
 
     def receive_data(self) -> bytes:
-        """Receives length-prefixed data (e.g., in fals.py or monit.py)."""
+        """Receives length-prefixed data (e.g., in demo_fals.py or demo_monit.py)."""
         if not self.sock:
             raise RuntimeError("Socket not connected.")
         resp_size_bytes = self.sock.recv(4)

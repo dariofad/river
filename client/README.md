@@ -11,7 +11,7 @@ Use them to test the simulation server and analyze the approach.
   `uv sync --dev`
 - Make sure the server is up and running, and the demo configuration
   files have been adapted to your local environment (see
-  `../simulation/readme.md`)
+  `../simulator/README.md`)
 - Check the list of available demos with `make`
 - Use the Makefile variables `HOST`, `M` and `C` to customize your
   test
@@ -20,4 +20,4 @@ Use them to test the simulation server and analyze the approach.
 
 For the live state perturbation demos, make sure the address of the
 state variables `ADDR` is valid for your local environment (again, see
-`../simulation/README.md`)
+`../simulator/README.md`)
