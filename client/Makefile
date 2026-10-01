@@ -43,17 +43,17 @@ select_manifest:
 monit: clean_cache select_manifest
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/manifest.yaml
-	@ uv run monit.py $(HOST) $(M) $(C)
+	@ uv run demo_monit.py $(HOST) $(M) $(C)
 
 fals: clean_cache select_manifest
-	@ uv run fals.py $(HOST) $(M) $(C)
+	@ uv run demo_fals.py $(HOST) $(M) $(C)
 
 sign: clean_cache select_manifest
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/manifest.yaml
-	@ uv run sign.py $(HOST) $(M) $(C)
+	@ uv run demo_sign.py $(HOST) $(M) $(C)
 
 state: clean_cache select_manifest
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/manifest.yaml
-	@ uv run state.py $(HOST) $(M) $(C)
+	@ uv run demo_state.py $(HOST) $(M) $(C)
