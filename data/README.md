@@ -1,7 +1,7 @@
 # process.py
 
 1. Start the server with `make bench`
-2. Run the simulation with the client (for example `make state M=3 C=3`)
+2. Run the simulation with the client (for example `make state m=3 c=3`)
 3. Wait until the end of the simulation and then extract the stats 
 Example 
 ```bash
