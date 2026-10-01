@@ -59,7 +59,7 @@ vmlinux.h
 *.asv
 
 # project notes
-notes.md
+/notes
 
 # stats
 _stats.csv
