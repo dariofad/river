@@ -12,12 +12,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "nodeenv==1.10.0",
-    "platformdirs==4.5.1",
-    "pyright==1.1.407",
-    "pysort==1.0.0",
-    "typing-extensions==4.15.0",
-    "yapf==0.43.0",
+    "pyrefly==1.3.2",
 ]
 
 [tool.uv]

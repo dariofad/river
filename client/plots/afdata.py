@@ -2,8 +2,8 @@ import csv
 import sys
 from collections.abc import Awaitable
 
-import redis
 import msgpack
+import redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 REDIS_HOST = "localhost"

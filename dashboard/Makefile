@@ -1,4 +1,6 @@
-.DEFAULT_GOAL := dash
+.DEFAULT_GOAL := run
 
-dash:
-	@ uv run dashboard.py
+.PHONY: run
+
+run:
+	@ uv run streamlit run app.py

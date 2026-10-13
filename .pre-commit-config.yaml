@@ -30,9 +30,9 @@ repos:
         language: system
         types_or: [python]
 
-      - id: pyright
-        name: pyright
-        entry: uv run --no-sync pyright
+      - id: pyrefly
+        name: pyrefly check
+        entry: uv run --no-sync pyrefly check
         language: system
         files: \.py$
         pass_filenames: false

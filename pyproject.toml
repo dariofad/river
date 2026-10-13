@@ -3,7 +3,6 @@ name = "river"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
-    "dash==4.0.0",
     "matplotlib==3.10.8",
     "msgpack==1.1.2",
     "numpy==2.4.6",
@@ -15,12 +14,8 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "nodeenv==1.10.0",
-    "platformdirs==4.5.1",
-    "pysort==1.0.0",
-    "typing-extensions==4.15.0",
     "ruff==0.12.0",
-    "pyright==1.1.407",
+    "pyrefly==1.3.2",
     "pre-commit>=4.6.0",
 ]
 
@@ -37,7 +32,7 @@ target-version = "py314"
 select = ["E", "F", "I", "UP"]
 ignore = []
 
-[tool.pyright]
-venvPath = "."
-venv = ".venv"
-pythonVersion = "3.14"
+[tool.pyrefly]
+search-path = ["client", "dashboard"]
+python-version = "3.14"
+
