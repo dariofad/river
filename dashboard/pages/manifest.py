@@ -13,7 +13,6 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_TOOL = Path(
     os.environ.get("RIVER_MANIFEST_TOOL", REPOSITORY_ROOT / "river-manifest")
 ).expanduser()
-ACTIVE_MANIFEST = REPOSITORY_ROOT / "simulator" / "manifest.yaml"
 
 
 def generate_manifest(binary: Path) -> tuple[str, str]:
@@ -41,13 +40,6 @@ def generate_manifest(binary: Path) -> tuple[str, str]:
         line for line in result.stderr.splitlines() if line.startswith("warning:")
     )
     return result.stdout, warnings
-
-
-def activate_manifest(text: str) -> None:
-    try:
-        ACTIVE_MANIFEST.write_text(text, encoding="utf-8")
-    except OSError as exc:
-        raise RuntimeError(f"Could not activate the manifest: {exc}") from exc
 
 
 st.title("2. Review the manifest")
@@ -105,12 +97,13 @@ scenario = available_scenarios[scenario_name]
 if st.button("Simulate", type="primary"):
     try:
         manifest = yaml.safe_load(manifest_text)
+        if not isinstance(manifest, dict):
+            raise RuntimeError("The manifest must be a YAML mapping.")
         request = scenario.build_request(uploaded_binary_name, manifest)
         if scenario.RESULTS == "redis":
             clear_results()
-        activate_manifest(manifest_text)
-        run = launch(scenario.PORT, request, scenario.run)
-    except RuntimeError as exc:
+        run = launch(scenario.PORT, request, scenario.run, manifest_text)
+    except (RuntimeError, yaml.YAMLError, KeyError, TypeError) as exc:
         st.error(str(exc))
     else:
         st.session_state.parsed_manifest = manifest

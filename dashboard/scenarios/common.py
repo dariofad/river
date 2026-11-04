@@ -30,7 +30,10 @@ def send_payload(sock: socket.socket, data: dict | list) -> None:
 
 
 def receive_ack(sock: socket.socket) -> str:
-    return sock.recv(64).rstrip(b"\x00").decode("utf-8")
+    ack = receive_exact(sock, 64).rstrip(b"\x00").decode("utf-8")
+    if ack.startswith("ERROR:"):
+        raise RuntimeError(ack)
+    return ack
 
 
 def receive_exact(sock: socket.socket, size: int) -> bytes:
@@ -51,7 +54,8 @@ def receive_payload(sock: socket.socket) -> bytes:
 def launch(
     port: int,
     request: dict[str, Any],
-    worker: Callable[[socket.socket, dict[str, Any], ScenarioRun], None],
+    worker: Callable[[socket.socket, dict[str, Any], ScenarioRun, str], None],
+    manifest_text: str,
 ) -> ScenarioRun:
     host = os.environ.get("RIVER_SERVER_HOST", "127.0.0.1")
     try:
@@ -64,7 +68,7 @@ def launch(
 
     def execute() -> None:
         try:
-            worker(sock, request, run)
+            worker(sock, request, run, manifest_text)
         except Exception as exc:
             run.state = ("error", str(exc))
         finally:

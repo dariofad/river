@@ -48,8 +48,8 @@ def build_request(filename: str, manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run(sock, request: dict[str, Any], run: ScenarioRun) -> None:
-    send_payload(sock, request["trajectory"])
+def run(sock, request: dict[str, Any], run: ScenarioRun, manifest_text: str) -> None:
+    send_payload(sock, {"manifest": manifest_text, "trajectory": request["trajectory"]})
     receive_ack(sock)
     if request["delay"]:
         time.sleep(request["delay"])

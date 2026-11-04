@@ -18,7 +18,6 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/cilium/ebpf/rlimit"
-	"github.com/dariofad/river/manifest"
 	"github.com/dariofad/river/my_types"
 	"github.com/redis/go-redis/v9"
 	"github.com/vmihailenco/msgpack/v5"
@@ -28,16 +27,6 @@ var VERBOSE bool
 var BENCH bool
 var RATIO uint32
 var CYCLES uint32
-
-const activeManifestPath = "simulator/manifest.yaml"
-
-func loadActiveConfiguration() (*my_types.Configuration, error) {
-	m, err := manifest.Read(activeManifestPath)
-	if err != nil {
-		return nil, err
-	}
-	return manifest.CompileConfiguration(m)
-}
 
 type eBPFInjector struct {
 	probeObjs *probeObjects
@@ -118,6 +107,7 @@ func extractTrajectory(rawTrajectory map[string]interface{}, config my_types.Con
 
 func Start(
 	simulationMode my_types.Service,
+	config *my_types.Configuration,
 	rawTrajectory map[string]interface{},
 	errCh chan error,
 	resCh chan my_types.OutputTrace,
@@ -131,16 +121,6 @@ func Start(
 	if err != nil {
 		log.Printf("loading collectionSpec: %s", err)
 		errCh <- errors.New("Simulation failed: cannot retrieve collection spec")
-		wg.Done()
-		return
-	}
-
-	// The active manifest is the sole user-facing configuration. Lower it in
-	// memory for this run so no stale JSON configuration can affect execution.
-	config, err := loadActiveConfiguration()
-	if err != nil {
-		log.Printf("Error loading active manifest: %s", err)
-		errCh <- err
 		wg.Done()
 		return
 	}
