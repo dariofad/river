@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import tempfile
 from pathlib import Path
 
 import streamlit as st
@@ -18,36 +17,30 @@ ACTIVE_MANIFEST = REPOSITORY_ROOT / "simulator" / "manifest.yaml"
 
 
 def generate_manifest(binary: Path) -> tuple[str, str]:
-    with tempfile.TemporaryDirectory(prefix="river-dashboard-") as temp_dir:
-        output = Path(temp_dir) / "manifest.yaml"
-        try:
-            result = subprocess.run(
-                [
-                    str(MANIFEST_TOOL),
-                    "generate",
-                    "--binary",
-                    str(binary),
-                    "--output",
-                    str(output),
-                ],
-                capture_output=True,
-                check=False,
-                text=True,
-            )
-        except OSError as exc:
-            raise RuntimeError(f"Could not run the manifest generator: {exc}") from exc
-        if result.returncode != 0:
-            detail = result.stderr.strip() or result.stdout.strip()
-            raise RuntimeError(detail or "Manifest generation failed.")
-        try:
-            manifest_text = output.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise RuntimeError(f"Could not read generated manifest: {exc}") from exc
+    try:
+        result = subprocess.run(
+            [
+                str(MANIFEST_TOOL),
+                "generate",
+                "--binary",
+                str(binary),
+                "--output",
+                "-",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        raise RuntimeError(f"Could not run the manifest generator: {exc}") from exc
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "Manifest generation failed.")
 
     warnings = "\n".join(
         line for line in result.stderr.splitlines() if line.startswith("warning:")
     )
-    return manifest_text, warnings
+    return result.stdout, warnings
 
 
 def activate_manifest(text: str) -> None:
@@ -69,9 +62,9 @@ uploaded_binary_name = st.session_state["uploaded_binary_name"]
 binary = Path(uploaded_binary_path)
 st.caption(f"Generated from uploaded binary `{uploaded_binary_name}`")
 
-manifest_text = st.session_state.get("manifest_text", "")
-warnings = ""
 if st.session_state.get("manifest_binary") != uploaded_binary_path:
+    for key in ("manifest_text", "manifest_binary", "manifest_warnings"):
+        st.session_state.pop(key, None)
     try:
         with st.spinner("Generating manifest…"):
             manifest_text, warnings = generate_manifest(binary)
@@ -80,8 +73,11 @@ if st.session_state.get("manifest_binary") != uploaded_binary_path:
         st.stop()
     st.session_state.manifest_text = manifest_text
     st.session_state.manifest_binary = uploaded_binary_path
-    if warnings:
-        st.warning(warnings)
+    st.session_state.manifest_warnings = warnings
+
+warnings = st.session_state.get("manifest_warnings", "")
+if warnings:
+    st.warning(warnings)
 
 manifest_text = st.text_area(
     "Editable YAML manifest",

@@ -32,7 +32,7 @@ repos:
 
       - id: pyrefly
         name: pyrefly check
-        entry: uv run --no-sync pyrefly check
+        entry: uv run --all-packages --locked pyrefly check
         language: system
         files: \.py$
         pass_filenames: false
