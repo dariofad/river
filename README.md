@@ -27,12 +27,14 @@ After, install:
 
 - Linux headers files `sudo apt install linux-headers-generic`, `sudo ln -sf /usr/include/asm-generic/ /usr/include/asm`
 - eBPF headers `sudo apt install libbpf-dev`
-- Install the workspace dependencies with `uv sync`
-- Install the workspace dependencies plus development tools with `uv sync --dev`
+- Install all Python dependencies and development tools with `uv sync --locked`
 
 ## Code style
 
-After cloning the repository, install the local dependencies and set the virtual environment `uv sync`. Then, hook up pre-commit to the local git lifecycle with `uv run pre-commit install`. This ensures the code is formatted before it is pushed to the repository. 
+After cloning the repository, install the dependencies with `uv sync --locked`.
+Then, hook up pre-commit to the local git lifecycle with
+`uv run --locked pre-commit install`. This ensures the code is formatted before
+it is pushed to the repository.
 
 ## Demos
 

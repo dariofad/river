@@ -5,10 +5,9 @@ Use them to test the simulation server and analyze the approach.
 
 ## Quickstart
 
-- Install the workspace dependencies from the repository root with
-  `uv sync`
-- If you also need the Python development tools, use
-  `uv sync --dev`
+- Install all Python dependencies and development tools with `uv sync --locked`
+  from this directory or the repository root. Both use the root `.venv` and
+  `pyproject.toml`, shared with the dashboard.
 - Make sure the server is up and running, and the demo configuration
   files have been adapted to your local environment (see
   `../simulator/README.md`)

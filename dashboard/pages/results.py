@@ -53,10 +53,10 @@ def live_results() -> None:
         labels={"value": "Signal value", "variable": "Signals"},
     )
     figure.update_layout(xaxis_title="Loop cycle", uirevision="constant")
-    st.plotly_chart(figure, use_container_width=True, key="live-results")
+    st.plotly_chart(figure, width="stretch", key="live-results")
 
     st.subheader("Latest data")
-    st.dataframe(dataframe, use_container_width=True, hide_index=True)
+    st.dataframe(dataframe, width="stretch", hide_index=True)
     st.download_button(
         "Export to CSV",
         data=dataframe.to_csv(index=False),
