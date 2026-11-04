@@ -16,6 +16,8 @@ const simulatorSignalLimit = 16
 
 // CompileConfiguration validates a user-edited manifest against its declared
 // binary and lowers it to River's internal runtime configuration.
+// TODO(security): Validate that `m.Artifact.Binary` resolves within an approved
+// server-side directory or binary allowlist before opening or executing it.
 func CompileConfiguration(m *Manifest) (*my_types.Configuration, error) {
 	if m.Artifact.Binary == "" {
 		return nil, errors.New("artifact.binary is required")

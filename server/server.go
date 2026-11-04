@@ -126,6 +126,13 @@ func deserialize(rawData []byte) (map[string]interface{}, error) {
 }
 
 // The first request carries the edited YAML and its trajectory together.
+// TODO(security): Prevent arbitrary binary execution via client-supplied manifests.
+// Currently, `artifact.binary` from the untrusted manifest YAML is compiled into
+// `config.ModelPath` and executed directly by the simulator.
+// A malicious client can craft a manual manifest pointing `artifact.binary` to any
+// existing ELF binary on the host (with its SHA-256 `build_id` and a valid symbol)
+// to achieve arbitrary command execution. Once the architecture stabilizes, restrict
+// `artifact.binary` to a server-controlled allowlist or trusted model directory.
 func prepareRequest(rawData []byte) (map[string]interface{}, *my_types.Configuration, error) {
 	var request struct {
 		Manifest   string                 `msgpack:"manifest"`

@@ -22,6 +22,11 @@ if st.button("Use this binary", type="primary", disabled=uploaded_file is None):
         if not contents.startswith(b"\x7fELF"):
             raise RuntimeError(f"`{filename}` is not an ELF binary.")
 
+        # TODO(security): Saving arbitrary user-uploaded ELF binaries and marking
+        # them executable allows any user with dashboard access to execute
+        # arbitrary code on the server host when the simulation runs. Add some
+        # measures to restrict or sandbox uploaded binaries before production
+        # deployment.
         upload_dir = Path(tempfile.mkdtemp(prefix="river-dashboard-upload-"))
         binary = upload_dir / filename
         binary.write_bytes(contents)
