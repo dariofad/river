@@ -4,6 +4,7 @@ import argparse
 import sys
 
 import msgpack
+from active_manifest import read_active_manifest_text
 from river_api import RiverSession, ebpf_format, get_time_array
 
 
@@ -40,11 +41,12 @@ def main():
     print(f"host:\t{args.host}\nmodel:\t{args.model}\nconfig:\t{args.config}")
 
     trajectory = generate_trajectory(args.model, args.config)
+    manifest_text = read_active_manifest_text()
 
     try:
         with RiverSession(args.host, 8081) as session:
             print(f"[*] Connecting to {args.host}:8081...", file=sys.stderr)
-            session.send_payload(trajectory)
+            session.send_payload({"manifest": manifest_text, "trajectory": trajectory})
 
             # Wait for data (prefixed with 4-byte length)
             print("[*] Receiving response data...", file=sys.stderr)

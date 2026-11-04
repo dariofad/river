@@ -5,9 +5,12 @@ import yaml
 ACTIVE_MANIFEST = Path(__file__).parent.parent / "simulator" / "manifest.yaml"
 
 
+def read_active_manifest_text() -> str:
+    return ACTIVE_MANIFEST.read_text(encoding="utf-8")
+
+
 def read_active_manifest() -> dict:
-    with ACTIVE_MANIFEST.open(encoding="utf-8") as file:
-        manifest = yaml.safe_load(file)
+    manifest = yaml.safe_load(read_active_manifest_text())
     if not isinstance(manifest, dict):
         raise ValueError(f"{ACTIVE_MANIFEST} does not contain a manifest")
     return manifest

@@ -5,7 +5,7 @@ import sys
 import time
 
 import numpy as np
-from active_manifest import active_cycles
+from active_manifest import active_cycles, read_active_manifest_text
 from river_api import RiverSession, ebpf_format, get_time_array
 
 CYCLES = active_cycles()
@@ -85,6 +85,7 @@ def main():
     print(f"cycles:\t{CYCLES}")
 
     trajectory = generate_trajectory(args.model, args.config)
+    manifest_text = read_active_manifest_text()
     perturbations = generate_perturbation(args.model, args.config)
 
     try:
@@ -92,7 +93,7 @@ def main():
             print(f"[*] Connecting to {args.host}:8082...", file=sys.stderr)
 
             # 1. Send initial trajectory
-            session.send_payload(trajectory)
+            session.send_payload({"manifest": manifest_text, "trajectory": trajectory})
 
             # 2. Wait for simulation started ACK
             ack = session.wait_for_ack(64)

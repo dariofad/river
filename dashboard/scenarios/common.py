@@ -120,13 +120,22 @@ def read_redis_results(manifest: dict[str, Any]) -> pd.DataFrame:
         client.close()
 
     rows: list[list[Any]] = []
+    max_signals = 0
     for item in raw_data:
         record = msgpack.unpackb(item, raw=False)
-        rows.append([record["TIME"], *record["VALUES"]])
+        values = record["VALUES"]
+        max_signals = max(max_signals, len(values))
+        rows.append([record["TIME"], *values])
     if not rows:
         return pd.DataFrame()
 
-    return pd.DataFrame(rows, columns=["time", *read_signal_names(manifest)])
+    names = read_signal_names(manifest)
+    if len(names) != max_signals:
+        names = [
+            names[i] if i < len(names) else f"signal_{i}" for i in range(max_signals)
+        ]
+
+    return pd.DataFrame(rows, columns=["time", *names])
 
 
 def read_response_results(run: ScenarioRun) -> pd.DataFrame:

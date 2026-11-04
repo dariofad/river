@@ -6,7 +6,7 @@ import sys
 import time
 
 import numpy as np
-from active_manifest import active_cycles
+from active_manifest import active_cycles, read_active_manifest_text
 from river_api import RiverSession, ebpf_format, get_time_array
 
 CYCLES = active_cycles()
@@ -82,6 +82,7 @@ def main():
         + f" (Cycles: {CYCLES})"
     )
     initial_trajectory = generate_trajectory(args.model, args.config)
+    manifest_text = read_active_manifest_text()
 
     injections = 2 if int(args.model) == 2 else 1
 
@@ -92,7 +93,9 @@ def main():
             print("[+] Connected successfully!")
 
             # Send initial trajectory and WAIT for the start ACK
-            session.send_payload(initial_trajectory)
+            session.send_payload(
+                {"manifest": manifest_text, "trajectory": initial_trajectory}
+            )
             ack = session.wait_for_ack(64)
             print(f"[Server]: {ack}")
 
