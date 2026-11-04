@@ -31,6 +31,7 @@ if st.button("Use this binary", type="primary", disabled=uploaded_file is None):
         st.stop()
     st.session_state.pop("manifest_text", None)
     st.session_state.pop("manifest_binary", None)
+    st.session_state.pop("manifest_warnings", None)
     st.session_state.pop("parsed_manifest", None)
     st.session_state.pop("simulation_run", None)
     st.session_state.pop("scenario_name", None)

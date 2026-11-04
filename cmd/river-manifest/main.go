@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/dariofad/river/manifest"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -30,13 +31,13 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage:")
-	fmt.Fprintln(os.Stderr, "  river-manifest generate --binary <ELF> --output <manifest.yaml>")
+	fmt.Fprintln(os.Stderr, "  river-manifest generate --binary <ELF> --output <manifest.yaml|->")
 }
 
 func runGenerate(args []string) error {
 	fs := flag.NewFlagSet("generate", flag.ExitOnError)
 	binary := fs.String("binary", "", "target ELF executable")
-	output := fs.String("output", "", "output YAML manifest")
+	output := fs.String("output", "", "output YAML manifest path, or - for stdout")
 	_ = fs.Parse(args)
 	if *binary == "" || *output == "" {
 		fs.Usage()
@@ -48,6 +49,16 @@ func runGenerate(args []string) error {
 	}
 	for _, warning := range warnings {
 		log.Printf("warning: %s", warning)
+	}
+	if *output == "-" {
+		raw, err := yaml.Marshal(m)
+		if err != nil {
+			return fmt.Errorf("encode manifest: %w", err)
+		}
+		if _, err := os.Stdout.Write(raw); err != nil {
+			return fmt.Errorf("write manifest to stdout: %w", err)
+		}
+		return nil
 	}
 	if err := manifest.Write(*output, m); err != nil {
 		return err

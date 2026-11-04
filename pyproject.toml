@@ -10,6 +10,7 @@ dependencies = [
     "plotly==6.6.0",
     "PyYAML==6.0.3",
     "redis==7.3.0",
+    "streamlit==1.66.1",
 ]
 
 [dependency-groups]
@@ -21,9 +22,6 @@ dev = [
 
 [tool.uv]
 package = false
-
-[tool.uv.workspace]
-members = ["client", "dashboard"]
 
 [tool.ruff]
 target-version = "py314"

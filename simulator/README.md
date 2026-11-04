@@ -23,6 +23,10 @@ Generate an editable manifest for a model binary:
 ./river-manifest generate --binary /path/to/model --output model.river.yaml
 ```
 
+Use `--output -` to write the YAML to standard output without creating a
+manifest file. Warnings and errors are written to standard error, so callers
+can capture the generated YAML directly in memory.
+
 Set `artifact.binary`, review `settings`, select model-local hooks and their
 phases, then select inputs, outputs, and states in each hook's `data` list.
 The manifest is the complete customization surface: no separate JSON

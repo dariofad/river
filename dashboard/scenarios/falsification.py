@@ -23,7 +23,7 @@ def build_request(filename: str, manifest: dict[str, Any]) -> dict[str, Any]:
     return {"PedalAngle": values, "EngineSpeed": values}
 
 
-def run(sock, trajectory: dict[str, Any], run: ScenarioRun) -> None:
-    send_payload(sock, trajectory)
+def run(sock, trajectory: dict[str, Any], run: ScenarioRun, manifest_text: str) -> None:
+    send_payload(sock, {"manifest": manifest_text, "trajectory": trajectory})
     run.result = msgpack.unpackb(receive_payload(sock), raw=False)
     run.state = ("complete", "Falsification completed.")

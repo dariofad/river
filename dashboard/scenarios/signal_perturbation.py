@@ -43,8 +43,8 @@ def build_request(filename: str, manifest: dict[str, Any]) -> dict[str, Any]:
     return {"trajectory": trajectory, "perturbations": perturbations}
 
 
-def run(sock, request: dict[str, Any], run: ScenarioRun) -> None:
-    send_payload(sock, request["trajectory"])
+def run(sock, request: dict[str, Any], run: ScenarioRun, manifest_text: str) -> None:
+    send_payload(sock, {"manifest": manifest_text, "trajectory": request["trajectory"]})
     receive_ack(sock)
     for perturbation in request["perturbations"]:
         if perturbation["delay"]:

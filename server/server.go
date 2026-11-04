@@ -5,15 +5,18 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/dariofad/river/manifest"
 	"github.com/dariofad/river/my_types"
 	"github.com/dariofad/river/simulator"
 	"github.com/vmihailenco/msgpack/v5"
+	"gopkg.in/yaml.v3"
 )
 
 var VERBOSE bool
@@ -68,8 +71,8 @@ func getData(ctx context.Context, conn net.Conn) (uint32, []byte, error) {
 
 	// get the data length (expected to be a uint32)
 	var dataLenBuf [4]byte
-	n, err := conn.Read(dataLenBuf[:])
-	if err != nil || n != 4 {
+	n, err := io.ReadFull(conn, dataLenBuf[:])
+	if err != nil {
 		select {
 		case <-ctx.Done():
 			log.Print("getData() stopped due to end of simulation")
@@ -90,15 +93,10 @@ func getData(ctx context.Context, conn net.Conn) (uint32, []byte, error) {
 	log.Printf("Receiving %d bytes (%.3f MB)", dataLen, float64(dataLen)/(1024*1024))
 
 	// get the data
-	var rawData []byte
-	chunk := make([]byte, 16384)
-	for len(rawData) != int(dataLen) {
-		n, err := conn.Read(chunk)
-		rawData = append(rawData, chunk[:n]...)
-		if err != nil {
-			log.Println("Chunk reading error:", err)
-			return dataLen, nil, err
-		}
+	rawData := make([]byte, dataLen)
+	if _, err := io.ReadFull(conn, rawData); err != nil {
+		log.Println("Body reading error:", err)
+		return dataLen, nil, err
 	}
 	log.Println("Data received")
 
@@ -125,6 +123,29 @@ func deserialize(rawData []byte) (map[string]interface{}, error) {
 
 	return data, nil
 
+}
+
+// The first request carries the edited YAML and its trajectory together.
+func prepareRequest(rawData []byte) (map[string]interface{}, *my_types.Configuration, error) {
+	var request struct {
+		Manifest   string                 `msgpack:"manifest"`
+		Trajectory map[string]interface{} `msgpack:"trajectory"`
+	}
+	if err := msgpack.Unmarshal(rawData, &request); err != nil {
+		return nil, nil, fmt.Errorf("decode simulation request: %w", err)
+	}
+	if request.Manifest == "" || request.Trajectory == nil {
+		return nil, nil, fmt.Errorf("simulation request requires manifest YAML and a trajectory map")
+	}
+	var m manifest.Manifest
+	if err := yaml.Unmarshal([]byte(request.Manifest), &m); err != nil {
+		return nil, nil, fmt.Errorf("parse manifest: %w", err)
+	}
+	config, err := manifest.CompileConfiguration(&m)
+	if err != nil {
+		return nil, nil, err
+	}
+	return request.Trajectory, config, nil
 }
 
 // Deserializes the received raw data using MessagePack
@@ -220,8 +241,9 @@ func handleMonitoring(conn net.Conn) {
 	_ = dataLen
 
 	// deserialize data
-	rawTrajectory, err := deserialize(rawData)
+	rawTrajectory, config, err := prepareRequest(rawData)
 	if err != nil {
+		log.Println("Invalid simulation request:", err)
 		return
 	}
 
@@ -231,7 +253,7 @@ func handleMonitoring(conn net.Conn) {
 	errCh := make(chan error, 1)
 	defer close(errCh)
 	// start monitoring
-	go simulator.Start(my_types.Monitoring, rawTrajectory, errCh, nil, nil, nil, wg)
+	go simulator.Start(my_types.Monitoring, config, rawTrajectory, errCh, nil, nil, nil, wg)
 	wg.Wait()
 	select {
 	case err = <-errCh:
@@ -260,8 +282,9 @@ func handleFalsification(conn net.Conn) {
 	_ = dataLen
 
 	// deserialize data
-	rawTrajectory, err := deserialize(rawData)
+	rawTrajectory, config, err := prepareRequest(rawData)
 	if err != nil {
+		log.Println("Invalid simulation request:", err)
 		return
 	}
 	wg := &sync.WaitGroup{}
@@ -273,7 +296,7 @@ func handleFalsification(conn net.Conn) {
 	defer close(resCh)
 	// start falsification
 	// todo: handle falsification on the server
-	go simulator.Start(my_types.Falsification, rawTrajectory, errCh, resCh, nil, nil, wg)
+	go simulator.Start(my_types.Falsification, config, rawTrajectory, errCh, resCh, nil, nil, wg)
 	wg.Wait()
 	// check simulation result
 	select {
@@ -336,8 +359,9 @@ func handleStatePerturbation(conn net.Conn) {
 	_ = dataLen
 
 	// deserialize data
-	rawTrajectory, err := deserialize(rawData)
+	rawTrajectory, config, err := prepareRequest(rawData)
 	if err != nil {
+		log.Println("Invalid simulation request:", err)
 		return
 	}
 
@@ -353,7 +377,7 @@ func handleStatePerturbation(conn net.Conn) {
 	statePertCh := make(chan []my_types.StateRecord, 24*512) // 12 KB buffer
 	defer close(statePertCh)
 	// start the simulation (async)
-	go simulator.Start(my_types.StatePerturbation, rawTrajectory, errCh, resCh, nil, statePertCh, wg)
+	go simulator.Start(my_types.StatePerturbation, config, rawTrajectory, errCh, resCh, nil, statePertCh, wg)
 	// helper to check simulation ended without blocking
 	done := make(chan struct{})
 	go func() {
@@ -431,8 +455,9 @@ func handleSignalPerturbation(conn net.Conn) {
 	_ = dataLen
 
 	// deserialize data
-	rawTrajectory, err := deserialize(rawData)
+	rawTrajectory, config, err := prepareRequest(rawData)
 	if err != nil {
+		log.Println("Invalid simulation request:", err)
 		return
 	}
 
@@ -448,7 +473,7 @@ func handleSignalPerturbation(conn net.Conn) {
 	pertCh := make(chan map[string]interface{}, 1024*1024*64) // 32 MB buffer
 	defer close(pertCh)
 	// start the simulation (async)
-	go simulator.Start(my_types.SignalPerturbation, rawTrajectory, errCh, resCh, pertCh, nil, wg)
+	go simulator.Start(my_types.SignalPerturbation, config, rawTrajectory, errCh, resCh, pertCh, nil, wg)
 	// helper to check simulation ended without blocking
 	done := make(chan struct{})
 	go func() {
