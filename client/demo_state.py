@@ -5,14 +5,12 @@ import sys
 import time
 
 import numpy as np
-from active_manifest import active_cycles, read_active_manifest_text
+from active_manifest import manifest_cycles, read_manifest_text
 from river_api import RiverSession, ebpf_format, get_time_array
 
-CYCLES = active_cycles()
 
-
-def generate_trajectory(model: str, config: str) -> dict:
-    t = get_time_array(CYCLES)
+def generate_trajectory(model: str, config: str, cycles: int) -> dict:
+    t = get_time_array(cycles)
 
     if model == "2" and config == "1":
         return {
@@ -20,17 +18,17 @@ def generate_trajectory(model: str, config: str) -> dict:
                 10 + 0.0001 * (t + 1), "float64"
             ),
             "Simulink2Code.Simulink2Code_U.y": ebpf_format(
-                np.full(CYCLES, 20), "float64"
+                np.full(cycles, 20), "float64"
             ),
         }
 
     elif model == "3" and config == "3":
         return {
             "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle": ebpf_format(
-                np.zeros(CYCLES), "float64"
+                np.zeros(cycles), "float64"
             ),
             "AbstractFuelControl_M1.AbstractFuelControl_M1_U.EngineSpeed": ebpf_format(
-                np.zeros(CYCLES), "float64"
+                np.zeros(cycles), "float64"
             ),
         }
 
@@ -86,11 +84,12 @@ def main():
     parser.add_argument("config", help="Config id")
     args = parser.parse_args()
 
+    cycles = manifest_cycles(args.model, args.config)
     print(f"host:\t{args.host}\nmodel:\t{args.model}\nconfig:\t{args.config}")
-    print(f"cycles:\t{CYCLES}")
+    print(f"cycles:\t{cycles}")
 
-    trajectory = generate_trajectory(args.model, args.config)
-    manifest_text = read_active_manifest_text()
+    trajectory = generate_trajectory(args.model, args.config, cycles)
+    manifest_text = read_manifest_text(args.model, args.config)
     perturbations = generate_perturbation(args.model, args.config)
 
     try:

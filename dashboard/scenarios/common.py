@@ -15,6 +15,7 @@ REDIS_HOST = os.environ.get("RIVER_REDIS_HOST", "127.0.0.1")
 REDIS_PORT = int(os.environ.get("RIVER_REDIS_PORT", "6379"))
 REDIS_DB = int(os.environ.get("RIVER_REDIS_DB", "0"))
 ZSET_KEY = "simulation:0"
+SIGNALS_KEY = "simulation:0:signals"
 
 
 @dataclass
@@ -81,7 +82,7 @@ def launch(
 def clear_results() -> None:
     client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
     try:
-        client.delete("simulation", ZSET_KEY)
+        client.delete("simulation", ZSET_KEY, SIGNALS_KEY)
     except redis.RedisError as exc:
         raise RuntimeError(
             f"Could not clear Redis at {REDIS_HOST}:{REDIS_PORT}: {exc}. "
@@ -108,10 +109,11 @@ def read_signal_names(manifest: dict[str, Any]) -> list[str]:
     return names
 
 
-def read_redis_results(manifest: dict[str, Any]) -> pd.DataFrame:
+def read_redis_results(manifest: dict[str, Any] | None = None) -> pd.DataFrame:
     client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
     try:
         raw_data = cast(list[bytes], client.zrange(ZSET_KEY, 0, -1))
+        raw_signals = cast(bytes | None, client.get(SIGNALS_KEY))
     except redis.RedisError as exc:
         raise RuntimeError(
             f"Could not read Redis at {REDIS_HOST}:{REDIS_PORT}: {exc}"
@@ -129,7 +131,13 @@ def read_redis_results(manifest: dict[str, Any]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
 
-    names = read_signal_names(manifest)
+    names: list[str] = []
+    if raw_signals is not None:
+        unpacked = msgpack.unpackb(raw_signals, raw=False)
+        if isinstance(unpacked, list):
+            names = [str(name) for name in unpacked]
+    if not names and manifest is not None:
+        names = read_signal_names(manifest)
     if len(names) != max_signals:
         names = [
             names[i] if i < len(names) else f"signal_{i}" for i in range(max_signals)

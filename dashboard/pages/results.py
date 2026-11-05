@@ -1,26 +1,9 @@
-from pathlib import Path
 from typing import Any, cast
 
 import plotly.express as px
 import streamlit as st
-import yaml
 from scenarios import SCENARIOS
 from scenarios.common import ScenarioRun, read_redis_results, read_response_results
-
-ACTIVE_MANIFEST = Path(__file__).resolve().parents[2] / "simulator" / "manifest.yaml"
-
-
-def load_active_manifest() -> dict[str, Any]:
-    try:
-        manifest = yaml.safe_load(ACTIVE_MANIFEST.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise RuntimeError(f"Could not read {ACTIVE_MANIFEST}: {exc}") from exc
-    except yaml.YAMLError as exc:
-        raise RuntimeError(f"Invalid YAML in {ACTIVE_MANIFEST}: {exc}") from exc
-    if not isinstance(manifest, dict):
-        raise RuntimeError(f"{ACTIVE_MANIFEST} does not contain a YAML mapping.")
-    return manifest
-
 
 st.title("3. Simulation results")
 
@@ -30,8 +13,7 @@ run = st.session_state.get("simulation_run")
 cli_mode = manifest is None or scenario_name is None or run is None
 
 if cli_mode:
-    rel_manifest = ACTIVE_MANIFEST.relative_to(ACTIVE_MANIFEST.parents[1])
-    st.caption(f"Live Redis monitor (`{rel_manifest}`)")
+    st.caption("Live Redis monitor")
 else:
     active_manifest = cast(dict[str, Any], manifest)
     active_run = cast(ScenarioRun, run)
@@ -52,7 +34,7 @@ def live_results() -> None:
 
     try:
         if cli_mode:
-            dataframe = read_redis_results(load_active_manifest())
+            dataframe = read_redis_results()
         elif scenario.RESULTS == "redis":
             dataframe = read_redis_results(active_manifest)
         else:

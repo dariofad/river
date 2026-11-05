@@ -6,17 +6,15 @@ import sys
 import time
 
 import numpy as np
-from active_manifest import active_cycles, read_active_manifest_text
+from active_manifest import manifest_cycles, read_manifest_text
 from river_api import RiverSession, ebpf_format, get_time_array
 
-CYCLES = active_cycles()
 
-
-def generate_trajectory(model: str, config: str) -> dict:
+def generate_trajectory(model: str, config: str, cycles: int) -> dict:
     """
     You can use native numpy/pandas directly and format trajectory for eBPF.
     """
-    t = get_time_array(CYCLES)
+    t = get_time_array(cycles)
 
     if model == "1" and config == "2":
         return {"egoCar.egoCar_Y.d_rel": ebpf_format(t / 1000.0, "float64")}
@@ -27,7 +25,7 @@ def generate_trajectory(model: str, config: str) -> dict:
                 10 + 0.0001 * (t + 1), "float64"
             ),
             "Simulink2Code.Simulink2Code_U.y": ebpf_format(
-                np.full(CYCLES, 20), "float64"
+                np.full(cycles, 20), "float64"
             ),
         }
 
@@ -44,7 +42,7 @@ def generate_trajectory(model: str, config: str) -> dict:
     elif model == "3" and config == "4":
         return {
             "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle": ebpf_format(
-                np.zeros(CYCLES), "float64"
+                np.zeros(cycles), "float64"
             )
         }
 
@@ -108,13 +106,15 @@ def main():
     parser.add_argument("config", help="Config id")
     args = parser.parse_args()
 
+    cycles = manifest_cycles(args.model, args.config)
+
     # 1. Create Trajectory Locally (No network connection yet)
     print(
         f"[*] Generating trajectory for Model {args.model}, Config {args.config} "
-        + f" (Cycles: {CYCLES})"
+        + f" (Cycles: {cycles})"
     )
-    initial_trajectory = generate_trajectory(args.model, args.config)
-    manifest_text = read_active_manifest_text()
+    initial_trajectory = generate_trajectory(args.model, args.config, cycles)
+    manifest_text = read_manifest_text(args.model, args.config)
 
     injections = 2 if int(args.model) == 2 else 1
 
@@ -133,7 +133,7 @@ def main():
 
             # 3. Live Perturbations Loop
             for iterno in range(injections):
-                period = CYCLES // 2
+                period = cycles // 2
                 perturbation = generate_perturbation(
                     args.model, args.config, period, iterno
                 )

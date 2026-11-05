@@ -5,14 +5,19 @@ from pathlib import Path
 import yaml
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
-ACTIVE_MANIFEST = REPOSITORY_ROOT / "simulator" / "manifest.yaml"
+DEMOS_DIR = REPOSITORY_ROOT / "simulator" / "demos"
 MANIFEST_TOOL = Path(
     os.environ.get("RIVER_MANIFEST_TOOL", REPOSITORY_ROOT / "river-manifest")
 ).expanduser()
 DEFAULT_MODELS_DIR = REPOSITORY_ROOT.parent / "sim2cpp"
 
 
-def read_active_manifest_text() -> str:
+def demo_manifest_path(model: str, config: str) -> Path:
+    return DEMOS_DIR / f"m{model}_c{config}.river.yaml"
+
+
+def read_manifest_text(model: str, config: str) -> str:
+    manifest_path = demo_manifest_path(model, config)
     models_dir = os.environ.get("MODELS_DIR") or str(DEFAULT_MODELS_DIR)
     try:
         result = subprocess.run(
@@ -20,7 +25,7 @@ def read_active_manifest_text() -> str:
                 str(MANIFEST_TOOL),
                 "repair",
                 "--manifest",
-                str(ACTIVE_MANIFEST),
+                str(manifest_path),
                 "--models-dir",
                 models_dir,
                 "--output",
@@ -39,14 +44,15 @@ def read_active_manifest_text() -> str:
     return result.stdout
 
 
-def read_active_manifest() -> dict:
-    with ACTIVE_MANIFEST.open(encoding="utf-8") as file:
+def read_manifest(model: str, config: str) -> dict:
+    manifest_path = demo_manifest_path(model, config)
+    with manifest_path.open(encoding="utf-8") as file:
         manifest = yaml.safe_load(file)
     if not isinstance(manifest, dict):
-        raise ValueError(f"{ACTIVE_MANIFEST} does not contain a manifest")
+        raise ValueError(f"{manifest_path} does not contain a manifest")
     return manifest
 
 
-def active_cycles() -> int:
-    settings = read_active_manifest().get("settings", {})
+def manifest_cycles(model: str, config: str) -> int:
+    settings = read_manifest(model, config).get("settings", {})
     return int(settings["cycles"])

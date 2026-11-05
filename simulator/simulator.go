@@ -912,12 +912,26 @@ func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_
 
 	// Create the Redis client
 	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	defer redisClient.Close()
 	// Get the simulation id
 	simulationId := strconv.Itoa(0) // todo fix
+	simulationKey := "simulation:" + simulationId
 	// Add a new Redis set fot the current run
 	if err := redisClient.SAdd(ctx, "simulation", simulationId).Err(); err != nil {
 		log.Print("Failed to add simulation set to Redis:", err)
 		return errors.New("Error adding new simulation set to Redis")
+	}
+	signalNames := make([]string, len(signals))
+	for i, sig := range signals {
+		signalNames[i] = sig.Name
+	}
+	signalsPayload, err := msgpack.Marshal(signalNames)
+	if err != nil {
+		return fmt.Errorf("encode simulation signal names: %w", err)
+	}
+	if err := redisClient.Set(ctx, simulationKey+":signals", signalsPayload, 0).Err(); err != nil {
+		log.Print("Failed to store simulation signal names in Redis:", err)
+		return errors.New("Error storing simulation signal names in Redis")
 	}
 	// Create a ring buffer reader
 	rbReader, err := ringbuf.NewReader(probeObjs.OutRb)
@@ -930,7 +944,6 @@ func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_
 	var records []my_types.ModelRecord
 	var writtenRecords uint32 = 0
 	var completionErr error
-	simulationKey := "simulation:" + simulationId
 
 monitorLoop:
 	for {

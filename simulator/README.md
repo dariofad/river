@@ -1,19 +1,19 @@
 # Simulator manifests
 
-River is configured exclusively through `simulator/manifest.yaml`. Before a
-simulation starts, River reads that YAML file, validates its binary fingerprint,
-resolves hooks and data addresses, and constructs its runtime configuration in
-memory. It never reads or creates a JSON configuration file.
+River is configured in memory through a manifest YAML sent with the simulation
+request. Before a simulation starts, River parses the manifest in memory,
+validates its binary fingerprint, resolves hooks and data addresses, and
+constructs its runtime configuration in memory. When streaming results to Redis,
+River also stores the active read-signal names in Redis (`simulation:0:signals`)
+so live viewers do not depend on a manifest file on disk.
 
-The client demo targets select one checked-in scenario manifest atomically:
+The client demo targets load and repair one checked-in scenario manifest template
+directly in memory:
 
 ```bash
 cd client
 make monit m=3 c=1
 ```
-
-The active-manifest workflow supports one selected demo at a time. Do not
-replace `simulator/manifest.yaml` while a simulation is running.
 
 ## Creating and editing a manifest
 

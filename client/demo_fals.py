@@ -4,7 +4,7 @@ import argparse
 import sys
 
 import msgpack
-from active_manifest import read_active_manifest_text
+from active_manifest import read_manifest_text
 from river_api import RiverSession, ebpf_format, get_time_array
 
 
@@ -45,7 +45,7 @@ def main():
     print(f"host:\t{args.host}\nmodel:\t{args.model}\nconfig:\t{args.config}")
 
     trajectory = generate_trajectory(args.model, args.config)
-    manifest_text = read_active_manifest_text()
+    manifest_text = read_manifest_text(args.model, args.config)
 
     try:
         with RiverSession(args.host, 8081) as session:
