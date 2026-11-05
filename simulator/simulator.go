@@ -944,6 +944,7 @@ func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_
 	var records []my_types.ModelRecord
 	var writtenRecords uint32 = 0
 	var completionErr error
+	lastFlush := time.Now()
 
 monitorLoop:
 	for {
@@ -990,13 +991,15 @@ monitorLoop:
 			default:
 			}
 		}
-		if len(records) >= 50 {
+		shouldFlush := len(records) >= 50 || (len(records) > 0 && (errors.Is(err, os.ErrDeadlineExceeded) || time.Since(lastFlush) >= 50*time.Millisecond))
+		if shouldFlush {
 			if err = writeToRedis(ctx, redisClient, simulationKey, records, signals); err != nil {
 				return errors.New("Error writing records to Redis")
 			}
 			// Empty local record slice
 			writtenRecords += uint32(len(records))
 			records = []my_types.ModelRecord{}
+			lastFlush = time.Now()
 		}
 	}
 	if len(records) != 0 {

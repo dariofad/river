@@ -48,11 +48,15 @@ def live_results() -> None:
         return
 
     signal_columns = [column for column in dataframe.columns if column != "time"]
+    sample_count = len(dataframe)
     figure = px.line(
         dataframe,
         x="time",
         y=signal_columns,
-        title=f"Time series ({len(signal_columns)} signals detected)",
+        title=(
+            f"Time series ({len(signal_columns)} signals, "
+            f"{sample_count} samples received)"
+        ),
         labels={"value": "Signal value", "variable": "Signals"},
     )
     figure.update_layout(xaxis_title="Loop cycle", uirevision="constant")
