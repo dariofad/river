@@ -40,10 +40,10 @@ it is pushed to the repository.
 
 The demos used to test the server use models from [this
 repo](https://github.com/dariofad/sim2cpp/tree/e793667428f6bcbce932c1cff87085ebca17d89e).
-Demo manifest templates in `simulator/demos/` reference `$MODELS_DIR` and are
-automatically repaired in memory via `river-manifest repair` using the `MODELS_DIR`
-variable (e.g., `make monit m=1 c=1 MODELS_DIR=/path/to/models` in `client/`). It
-is also possible to interact with the server using a Matlab session.
+Demo manifest templates in `simulator/demos/` use `$MODELS_DIR` and `$BUILD_ID`
+placeholders and are automatically repaired in memory via `river-manifest repair`
+using the `MODELS_DIR` variable (e.g., `make monit m=1 c=1 MODELS_DIR=/path/to/models`
+in `client/`). It is also possible to interact with the server using a Matlab session.
 
 ## Build and run the server
 

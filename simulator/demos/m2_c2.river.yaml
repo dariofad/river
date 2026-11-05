@@ -1,8 +1,8 @@
 version: 1
 artifact:
-    # Template path resolved by `river-manifest repair` using MODELS_DIR.
+    # Template fields resolved by `river-manifest repair` using MODELS_DIR.
     binary: $MODELS_DIR/ToyModel/Simulink2Code_ert_rtw/Simulink2Code
-    build_id: sha256:4b85301a0da2754f1667fc43befd48c7d504f74703bde000a7748dcd00bc7a88
+    build_id: $BUILD_ID
 settings:
     cycles: 20
     sample_every: 1

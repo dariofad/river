@@ -31,12 +31,16 @@ type discovery struct {
 	Models  map[string]*discoveredModel
 }
 
-const ModelsDirPlaceholder = "$MODELS_DIR"
+const (
+	ModelsDirPlaceholder = "$MODELS_DIR"
+	BuildIDPlaceholder   = "$BUILD_ID"
+)
 
 // Generate returns a manifest together with diagnostics for
 // conservative defaults that require user review.
 func Generate(binary string) (*Manifest, []string, error) {
-	absolute, err := filepath.Abs(binary)
+	resolved := resolvePath(strings.TrimSpace(binary), strings.TrimSpace(os.Getenv("MODELS_DIR")))
+	absolute, err := filepath.Abs(resolved)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve binary path: %w", err)
 	}
@@ -592,37 +596,84 @@ func fingerprint(path string) (string, error) {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// Repair resolves the target binary for a manifest template (using explicit
-// binaryPath if provided, or replacing the $MODELS_DIR prefix in m.Artifact.Binary
-// with modelsDir) and updates m.Artifact.Binary and m.Artifact.BuildID to
-// match the local executable.
+// Repair resolves template placeholders ($MODELS_DIR and $BUILD_ID) in m.
+// If neither artifact.binary nor artifact.build_id uses a '$' template prefix
+// (and no explicit binaryPath override is given), both fields are kept and
+// validated as-is (resolving relative binary paths to absolute paths).
 func Repair(m *Manifest, modelsDir, binaryPath string) error {
-	target := strings.TrimSpace(binaryPath)
-	if target == "" {
-		target = strings.TrimSpace(m.Artifact.Binary)
-		if target == "" {
-			return fmt.Errorf("artifact.binary is empty")
+	cleanModelsDir := strings.TrimSpace(modelsDir)
+	if cleanModelsDir != "" {
+		absModelsDir, err := filepath.Abs(cleanModelsDir)
+		if err != nil {
+			return fmt.Errorf("resolve models-dir path: %w", err)
 		}
-		if strings.HasPrefix(target, ModelsDirPlaceholder) {
-			if strings.TrimSpace(modelsDir) == "" {
+		cleanModelsDir = absModelsDir
+	}
+
+	rawBinary := strings.TrimSpace(m.Artifact.Binary)
+	explicitBinary := strings.TrimSpace(binaryPath)
+	binaryIsTemplate := strings.HasPrefix(rawBinary, "$")
+	buildIDIsTemplate := strings.HasPrefix(strings.TrimSpace(m.Artifact.BuildID), "$")
+
+	var target string
+	switch {
+	case binaryIsTemplate:
+		if rawBinary != ModelsDirPlaceholder && !strings.HasPrefix(rawBinary, ModelsDirPlaceholder+"/") {
+			return fmt.Errorf("unsupported template placeholder in artifact.binary: %q", rawBinary)
+		}
+		if explicitBinary != "" {
+			target = resolvePath(explicitBinary, cleanModelsDir)
+		} else {
+			if cleanModelsDir == "" {
 				return fmt.Errorf("artifact.binary uses %s; provide --models-dir or --binary", ModelsDirPlaceholder)
 			}
-			suffix := strings.TrimPrefix(target, ModelsDirPlaceholder)
+			suffix := strings.TrimPrefix(rawBinary, ModelsDirPlaceholder)
 			suffix = strings.TrimPrefix(suffix, "/")
-			target = filepath.Join(modelsDir, suffix)
-		} else if !filepath.IsAbs(target) && strings.TrimSpace(modelsDir) != "" {
-			target = filepath.Join(modelsDir, target)
+			target = filepath.Join(cleanModelsDir, suffix)
 		}
+	case explicitBinary != "":
+		target = resolvePath(explicitBinary, cleanModelsDir)
+	default:
+		if rawBinary == "" {
+			return fmt.Errorf("artifact.binary is empty")
+		}
+		target = resolvePath(rawBinary, cleanModelsDir)
 	}
+
 	absolute, err := filepath.Abs(target)
 	if err != nil {
 		return fmt.Errorf("resolve binary path: %w", err)
 	}
-	buildID, err := fingerprint(absolute)
+	actualBuildID, err := fingerprint(absolute)
 	if err != nil {
 		return err
 	}
+
 	m.Artifact.Binary = absolute
-	m.Artifact.BuildID = buildID
+	if buildIDIsTemplate {
+		if strings.TrimSpace(m.Artifact.BuildID) != BuildIDPlaceholder {
+			return fmt.Errorf("unsupported template placeholder in artifact.build_id: %q", m.Artifact.BuildID)
+		}
+		m.Artifact.BuildID = actualBuildID
+	} else if m.Artifact.BuildID == "" || m.Artifact.BuildID != actualBuildID {
+		return fmt.Errorf("manifest build_id does not match %s; regenerate the manifest or use %s", absolute, BuildIDPlaceholder)
+	}
 	return nil
+}
+
+// resolvePath resolves a potentially relative path. If the path is relative and
+// does not exist relative to the current working directory, it is resolved
+// relative to modelsDir when modelsDir is provided.
+func resolvePath(path, modelsDir string) string {
+	if filepath.IsAbs(path) || modelsDir == "" {
+		return path
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	candidate := filepath.Join(modelsDir, path)
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return path
 }

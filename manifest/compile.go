@@ -22,6 +22,9 @@ func CompileConfiguration(m *Manifest) (*my_types.Configuration, error) {
 	if m.Artifact.Binary == "" {
 		return nil, errors.New("artifact.binary is required")
 	}
+	if strings.Contains(m.Artifact.Binary, ModelsDirPlaceholder) || m.Artifact.BuildID == BuildIDPlaceholder {
+		return nil, fmt.Errorf("manifest contains unresolved template placeholders (%s or %s); run river-manifest repair first", ModelsDirPlaceholder, BuildIDPlaceholder)
+	}
 	absolute, err := filepath.Abs(m.Artifact.Binary)
 	if err != nil {
 		return nil, fmt.Errorf("resolve binary path: %w", err)

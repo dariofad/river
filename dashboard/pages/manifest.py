@@ -44,18 +44,18 @@ def generate_manifest(binary: Path) -> tuple[str, str]:
 
 
 def repair_manifest(
-    manifest_text: str, binary: Path, models_dir: str | None = None
+    manifest_text: str, binary: Path | None = None, models_dir: str | None = None
 ) -> str:
     cmd = [
         str(MANIFEST_TOOL),
         "repair",
         "--manifest",
         "-",
-        "--binary",
-        str(binary),
         "--output",
         "-",
     ]
+    if binary is not None:
+        cmd.extend(["--binary", str(binary)])
     if models_dir:
         cmd.extend(["--models-dir", models_dir])
     try:
@@ -156,14 +156,23 @@ scenario = available_scenarios[scenario_name]
 
 if st.button("Simulate", type="primary"):
     try:
-        repaired_manifest_text = repair_manifest(manifest_text, binary)
-        manifest = yaml.safe_load(repaired_manifest_text)
+        manifest = yaml.safe_load(manifest_text)
         if not isinstance(manifest, dict):
             raise RuntimeError("The manifest must be a YAML mapping.")
+        artifact = manifest.get("artifact", {})
+        has_template = isinstance(artifact, dict) and (
+            str(artifact.get("binary", "")).startswith("$")
+            or str(artifact.get("build_id", "")).startswith("$")
+        )
+        if has_template:
+            manifest_text = repair_manifest(manifest_text, binary)
+            manifest = yaml.safe_load(manifest_text)
+            if not isinstance(manifest, dict):
+                raise RuntimeError("The manifest must be a YAML mapping.")
         request = scenario.build_request(uploaded_binary_name, manifest)
         if scenario.RESULTS == "redis":
             clear_results()
-        run = launch(scenario.PORT, request, scenario.run, repaired_manifest_text)
+        run = launch(scenario.PORT, request, scenario.run, manifest_text)
     except (RuntimeError, yaml.YAMLError, KeyError, TypeError) as exc:
         st.error(str(exc))
     else:

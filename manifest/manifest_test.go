@@ -535,17 +535,87 @@ func TestRepairUpdatesTemplateBinaryAndBuildID(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Artifact.Binary = "$MODELS_DIR/DualACC/dualACC"
-	m.Artifact.BuildID = "sha256:0000"
+	m.Artifact.BuildID = "$BUILD_ID"
+	if _, err := CompileConfiguration(m); err == nil || !strings.Contains(err.Error(), "unresolved template placeholders") {
+		t.Fatalf("expected unresolved template placeholder error, got %v", err)
+	}
 	if err := Repair(m, modelsDir, ""); err != nil {
 		t.Fatal(err)
 	}
 	if m.Artifact.Binary != target {
 		t.Fatalf("repaired binary = %q, want %q", m.Artifact.Binary, target)
 	}
-	if m.Artifact.BuildID == "sha256:0000" {
-		t.Fatal("expected build_id to be updated")
+	if m.Artifact.BuildID == "$BUILD_ID" || !strings.HasPrefix(m.Artifact.BuildID, "sha256:") {
+		t.Fatalf("expected build_id to be updated to sha256, got %q", m.Artifact.BuildID)
 	}
 	if _, err := CompileConfiguration(m); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRepairPreservesAndValidatesNonTemplateFields(t *testing.T) {
+	m, binary := configuredManifest(t)
+	originalBuildID := m.Artifact.BuildID
+
+	// Non-template manifest with matching binary and build_id is preserved as-is.
+	if err := Repair(m, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if m.Artifact.Binary != binary || m.Artifact.BuildID != originalBuildID {
+		t.Fatalf("got binary=%q build_id=%q, want binary=%q build_id=%q", m.Artifact.Binary, m.Artifact.BuildID, binary, originalBuildID)
+	}
+
+	// Non-template build_id that does not match the binary is rejected (not overwritten).
+	m.Artifact.BuildID = "sha256:mismatch"
+	if err := Repair(m, "", ""); err == nil || !strings.Contains(err.Error(), "manifest build_id does not match") {
+		t.Fatalf("expected build_id mismatch error, got %v", err)
+	}
+}
+
+func TestRepairResolvesRelativeModelsDirAndBinary(t *testing.T) {
+	m, binary := configuredManifest(t)
+	workDir := t.TempDir()
+	relModelsDir := filepath.Join("nested", "models")
+	absModelsDir := filepath.Join(workDir, relModelsDir)
+	modelSubdir := filepath.Join(absModelsDir, "DualACC")
+	if err := os.MkdirAll(modelSubdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedBinary := filepath.Join(modelSubdir, "dualACC")
+	if err := os.WriteFile(expectedBinary, raw, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	prevDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(workDir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(prevDir) }()
+
+	// 1. Relative --models-dir with $MODELS_DIR template
+	m.Artifact.Binary = "$MODELS_DIR/DualACC/dualACC"
+	m.Artifact.BuildID = "$BUILD_ID"
+	if err := Repair(m, relModelsDir, ""); err != nil {
+		t.Fatal(err)
+	}
+	if m.Artifact.Binary != expectedBinary {
+		t.Fatalf("got binary %q, want %q", m.Artifact.Binary, expectedBinary)
+	}
+
+	// 2. Relative --binary resolved relative to relative --models-dir
+	m.Artifact.Binary = "$MODELS_DIR/placeholder"
+	m.Artifact.BuildID = "$BUILD_ID"
+	if err := Repair(m, relModelsDir, filepath.Join("DualACC", "dualACC")); err != nil {
+		t.Fatal(err)
+	}
+	if m.Artifact.Binary != expectedBinary {
+		t.Fatalf("got binary %q, want %q", m.Artifact.Binary, expectedBinary)
 	}
 }

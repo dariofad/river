@@ -14,8 +14,8 @@ Use them to test the simulation server and analyze the approach.
 - Use the Makefile variables `HOST`, `MODELS_DIR`, `m` and `c` to customize your
   test. By default, `MODELS_DIR` resolves to `../../sim2cpp` (sibling to the `river`
   repository). Before each demo sends its request to the server, it invokes
-  `river-manifest repair` in memory to replace `$MODELS_DIR` in the demo manifest
-  template and recompute the binary `build_id` for your local environment.
+  `river-manifest repair` in memory to replace `$MODELS_DIR` and `$BUILD_ID` in the
+  demo manifest template for your local environment and architecture.
 - Run a demo, for example with `make monit m=1 c=1` or
   `make monit m=1 c=1 MODELS_DIR=/path/to/models` (default `HOST` is 127.0.0.1)
 - To view live plots of CLI demo runs in the browser, run `make plot` (or

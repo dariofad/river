@@ -1,8 +1,8 @@
 version: 1
 artifact:
-    # Template path resolved by `river-manifest repair` using MODELS_DIR.
+    # Template fields resolved by `river-manifest repair` using MODELS_DIR.
     binary: $MODELS_DIR/DualACC/dualACC
-    build_id: sha256:e89032e60f06cbadda4601e5788cc093e2f6c6bb85696b536a79026842883e09
+    build_id: $BUILD_ID
 settings:
     cycles: 451
     sample_every: 3

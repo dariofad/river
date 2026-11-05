@@ -75,8 +75,9 @@ booleans. State perturbation messages must specify `TYPE`, matching
 ## Demo manifests
 
 `simulator/demos/mx_cy.river.yaml` contains the demo manifest templates for each
-client and dashboard scenario. Their `artifact.binary` field uses the `$MODELS_DIR`
-placeholder (for example, `$MODELS_DIR/DualACC/dualACC`).
+client and dashboard scenario. Their `artifact` section uses the `$MODELS_DIR` and
+`$BUILD_ID` placeholders (for example, `binary: $MODELS_DIR/DualACC/dualACC` and
+`build_id: $BUILD_ID`).
 
 When running demos from `client/` (e.g. `make monit m=1 c=1 MODELS_DIR=/path/to/models`)
 or selecting a demo template in the dashboard, `river-manifest repair` is invoked
@@ -87,6 +88,6 @@ automatically in memory before sending the request to the server:
 ```
 
 This resolves `artifact.binary` against `MODELS_DIR` (or an explicit `--binary`
-override) and recomputes `artifact.build_id` for the local binary without
-modifying the checked-in template files.
+override) and computes `artifact.build_id` (`sha256:...`) for the local binary
+without modifying the checked-in template files.
 
