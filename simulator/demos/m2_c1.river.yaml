@@ -1,6 +1,7 @@
 version: 1
 artifact:
-    binary: /home/dd/git/git_unibg/sim2cpp/ToyModel/Simulink2Code_ert_rtw/Simulink2Code
+    # Template path resolved by `river-manifest repair` using MODELS_DIR.
+    binary: $MODELS_DIR/ToyModel/Simulink2Code_ert_rtw/Simulink2Code
     build_id: sha256:4b85301a0da2754f1667fc43befd48c7d504f74703bde000a7748dcd00bc7a88
 settings:
     cycles: 20

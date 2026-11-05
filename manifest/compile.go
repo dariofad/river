@@ -110,7 +110,7 @@ func CompileConfiguration(m *Manifest) (*my_types.Configuration, error) {
 				problems = append(problems, fmt.Sprintf("model %q %s hook: unknown hook %q", configured.Name, selected.Action, selected.ID))
 				continue
 			}
-			symbol, offset, retprobe, err := compileHook(ef, dw, dm, *hook, selected.Phase, selected.Offset)
+			symbol, offset, retprobe, err := compileHook(ef, dw, dm, *hook, selected.Phase, selected.Offset, absolute)
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("model %q %s hook %q at %s: %v", configured.Name, selected.Action, selected.ID, selected.Phase, err))
 				continue
@@ -234,7 +234,7 @@ func resolveHookSymbol(dm *discoveredModel, hook Hook) (string, error) {
 	return symbol, nil
 }
 
-func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, hook Hook, phase string, customOffset *HexUint64) (string, uint64, bool, error) {
+func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, hook Hook, phase string, customOffset *HexUint64, binaryPath string) (string, uint64, bool, error) {
 	if hook.ID == "" {
 		return "", 0, false, errors.New("function is required")
 	}
@@ -276,7 +276,7 @@ func compileHook(ef *elf.File, dw *dwarf.Data, dm *discoveredModel, hook Hook, p
 		if err != nil {
 			return "", 0, false, err
 		}
-		source, lines, err := functionSource(dw, functionSymbol, dm.Manifest.Outputs)
+		source, lines, err := functionSource(dw, functionSymbol, dm.Manifest.Outputs, binaryPath)
 		if err != nil {
 			return "", 0, false, fmt.Errorf("locate post-output source site: %w", err)
 		}

@@ -40,7 +40,7 @@ func inferSemanticDefaults(binary string, m *Manifest, discovered *discovery) []
 			warnings = append(warnings, fmt.Sprintf("model %q: %v", model.Name, err))
 			continue
 		}
-		source, lines, err := functionSource(dw, symbol, model.Outputs)
+		source, lines, err := functionSource(dw, symbol, model.Outputs, binary)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("model %q: using terminal return (%v)", model.Name, err))
 			continue
@@ -76,9 +76,10 @@ type sourceLine struct {
 	address uint64
 }
 
-func functionSource(dw *dwarf.Data, symbol elf.Symbol, outputs []Data) ([]string, []sourceLine, error) {
+func functionSource(dw *dwarf.Data, symbol elf.Symbol, outputs []Data, binaryPath string) ([]string, []sourceLine, error) {
 	r := dw.Reader()
 	var matches []sourceLine
+	binaryDir := filepath.Dir(binaryPath)
 	for {
 		e, err := r.Next()
 		if err != nil {
@@ -100,7 +101,26 @@ func functionSource(dw *dwarf.Data, symbol elf.Symbol, outputs []Data) ([]string
 			if le.Address >= symbol.Value && le.Address < symbol.Value+symbol.Size && le.File != nil {
 				path := le.File.Name
 				if !filepath.IsAbs(path) && compDir != "" {
-					path = filepath.Join(compDir, path)
+					candidate := filepath.Join(compDir, path)
+					if _, statErr := os.Stat(candidate); statErr == nil {
+						path = candidate
+					} else if binaryDir != "" {
+						alt := filepath.Join(binaryDir, filepath.Base(path))
+						if _, altErr := os.Stat(alt); altErr == nil {
+							path = alt
+						} else {
+							path = candidate
+						}
+					} else {
+						path = candidate
+					}
+				} else if filepath.IsAbs(path) {
+					if _, statErr := os.Stat(path); statErr != nil && binaryDir != "" {
+						alt := filepath.Join(binaryDir, filepath.Base(path))
+						if _, altErr := os.Stat(alt); altErr == nil {
+							path = alt
+						}
+					}
 				}
 				matches = append(matches, sourceLine{path, le.Line, le.Address})
 			}

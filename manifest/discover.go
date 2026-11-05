@@ -31,6 +31,8 @@ type discovery struct {
 	Models  map[string]*discoveredModel
 }
 
+const ModelsDirPlaceholder = "$MODELS_DIR"
+
 // Generate returns a manifest together with diagnostics for
 // conservative defaults that require user review.
 func Generate(binary string) (*Manifest, []string, error) {
@@ -588,4 +590,39 @@ func fingerprint(path string) (string, error) {
 		return "", fmt.Errorf("fingerprint binary: %w", err)
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// Repair resolves the target binary for a manifest template (using explicit
+// binaryPath if provided, or replacing the $MODELS_DIR prefix in m.Artifact.Binary
+// with modelsDir) and updates m.Artifact.Binary and m.Artifact.BuildID to
+// match the local executable.
+func Repair(m *Manifest, modelsDir, binaryPath string) error {
+	target := strings.TrimSpace(binaryPath)
+	if target == "" {
+		target = strings.TrimSpace(m.Artifact.Binary)
+		if target == "" {
+			return fmt.Errorf("artifact.binary is empty")
+		}
+		if strings.HasPrefix(target, ModelsDirPlaceholder) {
+			if strings.TrimSpace(modelsDir) == "" {
+				return fmt.Errorf("artifact.binary uses %s; provide --models-dir or --binary", ModelsDirPlaceholder)
+			}
+			suffix := strings.TrimPrefix(target, ModelsDirPlaceholder)
+			suffix = strings.TrimPrefix(suffix, "/")
+			target = filepath.Join(modelsDir, suffix)
+		} else if !filepath.IsAbs(target) && strings.TrimSpace(modelsDir) != "" {
+			target = filepath.Join(modelsDir, target)
+		}
+	}
+	absolute, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("resolve binary path: %w", err)
+	}
+	buildID, err := fingerprint(absolute)
+	if err != nil {
+		return err
+	}
+	m.Artifact.Binary = absolute
+	m.Artifact.BuildID = buildID
+	return nil
 }

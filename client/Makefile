@@ -1,6 +1,7 @@
 m ?= 1
 c ?= 1
 HOST ?= 127.0.0.1
+MODELS_DIR ?= $(abspath ../../sim2cpp)
 
 MONIT = monit
 FALS = fals
@@ -43,17 +44,17 @@ select_manifest:
 monit: clean_cache select_manifest
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/manifest.yaml
-	@ uv run demo_monit.py $(HOST) $(m) $(c)
+	@ MODELS_DIR="$(MODELS_DIR)" uv run demo_monit.py $(HOST) $(m) $(c)
 
 fals: clean_cache select_manifest
-	@ uv run demo_fals.py $(HOST) $(m) $(c)
+	@ MODELS_DIR="$(MODELS_DIR)" uv run demo_fals.py $(HOST) $(m) $(c)
 
 sign: clean_cache select_manifest
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/manifest.yaml
-	@ uv run demo_sign.py $(HOST) $(m) $(c)
+	@ MODELS_DIR="$(MODELS_DIR)" uv run demo_sign.py $(HOST) $(m) $(c)
 
 state: clean_cache select_manifest
 	@ chmod +x ../simulator/_utils/list_signals.py
 	@ ../simulator/_utils/list_signals.py < ../simulator/manifest.yaml
-	@ uv run demo_state.py $(HOST) $(m) $(c)
+	@ MODELS_DIR="$(MODELS_DIR)" uv run demo_state.py $(HOST) $(m) $(c)

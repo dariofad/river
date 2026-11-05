@@ -74,7 +74,19 @@ booleans. State perturbation messages must specify `TYPE`, matching
 
 ## Demo manifests
 
-`simulator/demos/mx_cy.river.yaml` replaces the former JSON demo
-configuration. Each contains the binary, timing, hook selection, and selected
-signals for its client scenario. The `client` Make targets atomically install
-the chosen one as `simulator/manifest.yaml` before contacting River.
+`simulator/demos/mx_cy.river.yaml` contains the demo manifest templates for each
+client and dashboard scenario. Their `artifact.binary` field uses the `$MODELS_DIR`
+placeholder (for example, `$MODELS_DIR/DualACC/dualACC`).
+
+When running demos from `client/` (e.g. `make monit m=1 c=1 MODELS_DIR=/path/to/models`)
+or selecting a demo template in the dashboard, `river-manifest repair` is invoked
+automatically in memory before sending the request to the server:
+
+```bash
+./river-manifest repair --manifest simulator/demos/m1_c1.river.yaml --models-dir /path/to/models --output -
+```
+
+This resolves `artifact.binary` against `MODELS_DIR` (or an explicit `--binary`
+override) and recomputes `artifact.build_id` for the local binary without
+modifying the checked-in template files.
+

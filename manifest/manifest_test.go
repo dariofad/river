@@ -518,3 +518,34 @@ func TestCompileConfigurationAcceptsMatchingBinaryAtNewPath(t *testing.T) {
 		t.Fatalf("MODEL_PATH = %q, want explicit binary %q", config.ModelPath, moved)
 	}
 }
+
+func TestRepairUpdatesTemplateBinaryAndBuildID(t *testing.T) {
+	m, binary := configuredManifest(t)
+	modelsDir := t.TempDir()
+	relDir := filepath.Join(modelsDir, "DualACC")
+	if err := os.MkdirAll(relDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(relDir, "dualACC")
+	if err := os.WriteFile(target, raw, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m.Artifact.Binary = "$MODELS_DIR/DualACC/dualACC"
+	m.Artifact.BuildID = "sha256:0000"
+	if err := Repair(m, modelsDir, ""); err != nil {
+		t.Fatal(err)
+	}
+	if m.Artifact.Binary != target {
+		t.Fatalf("repaired binary = %q, want %q", m.Artifact.Binary, target)
+	}
+	if m.Artifact.BuildID == "sha256:0000" {
+		t.Fatal("expected build_id to be updated")
+	}
+	if _, err := CompileConfiguration(m); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -1,6 +1,7 @@
 version: 1
 artifact:
-    binary: /home/dd/git/git_unibg/sim2cpp/DualACC/dualACC
+    # Template path resolved by `river-manifest repair` using MODELS_DIR.
+    binary: $MODELS_DIR/DualACC/dualACC
     build_id: sha256:e89032e60f06cbadda4601e5788cc093e2f6c6bb85696b536a79026842883e09
 settings:
     cycles: 451

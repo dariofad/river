@@ -1,6 +1,7 @@
 version: 1
 artifact:
-    binary: /home/dd/git/git_unibg/sim2cpp/AbstractFuelControl_M1_grt_rtw/fuel_control
+    # Template path resolved by `river-manifest repair` using MODELS_DIR.
+    binary: $MODELS_DIR/AbstractFuelControl_M1_grt_rtw/fuel_control
     build_id: sha256:41f1a6d2e91bf12be7196d91c8822deb7e3ea1b36a1ae8a381bd303af28f208d
 settings:
     cycles: 1001
