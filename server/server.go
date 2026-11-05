@@ -9,8 +9,10 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/dariofad/river/manifest"
 	"github.com/dariofad/river/my_types"
@@ -152,11 +154,36 @@ func prepareRequest(rawData []byte) (map[string]interface{}, *my_types.Configura
 	if err != nil {
 		return nil, nil, err
 	}
-	return request.Trajectory, config, nil
+	sanitizedTrajectory := make(map[string]interface{}, len(request.Trajectory))
+	for key, values := range request.Trajectory {
+		cleanKey, keyErr := sanitizeCatalogPath(key)
+		if keyErr != nil {
+			return nil, nil, fmt.Errorf("trajectory key: %w", keyErr)
+		}
+		sanitizedTrajectory[cleanKey] = values
+	}
+	return sanitizedTrajectory, config, nil
 }
 
-// Deserializes the received raw data using MessagePack
-func deserializeState(rawData []byte) ([]my_types.StateRecord, error) {
+func sanitizeCatalogPath(path string) (string, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "", fmt.Errorf("empty catalog path")
+	}
+	if len(trimmed) > 256 {
+		return "", fmt.Errorf("catalog path exceeds maximum length")
+	}
+	for _, r := range trimmed {
+		if unicode.IsControl(r) || (!unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '.' && r != '_') {
+			return "", fmt.Errorf("catalog path %q contains invalid characters", trimmed)
+		}
+	}
+	return trimmed, nil
+}
+
+// Deserializes the received raw data using MessagePack and resolves/validates
+// each state perturbation record against the compiled manifest configuration.
+func deserializeState(rawData []byte, config *my_types.Configuration) ([]my_types.StateRecord, error) {
 
 	defer timeTrack(time.Now(), "deserializeState()")
 
@@ -166,8 +193,52 @@ func deserializeState(rawData []byte) ([]my_types.StateRecord, error) {
 	if err != nil {
 		log.Println("Decoding failed, error:", err)
 		return nil, err
-	} else {
-		for _, record := range data {
+	}
+	cycles, _ := strconv.ParseUint(config.NofCycles, 10, 32)
+	for i := range data {
+		record := &data[i]
+		if cycles > 0 && uint64(record.Time) >= cycles {
+			return nil, fmt.Errorf("state perturbation time %d is out of range (cycles: %d)", record.Time, cycles)
+		}
+		if strings.TrimSpace(record.Name) != "" {
+			cleanPath, pathErr := sanitizeCatalogPath(record.Name)
+			if pathErr != nil {
+				return nil, fmt.Errorf("state perturbation: %w", pathErr)
+			}
+			entry, ok := config.Catalog[cleanPath]
+			if !ok {
+				return nil, fmt.Errorf("state perturbation %q is not a writable entry in the manifest catalog", cleanPath)
+			}
+			catalogAddr, parseErr := strconv.ParseUint(entry.Addr, 0, 64)
+			if parseErr != nil {
+				return nil, fmt.Errorf("state perturbation %q has invalid catalog address %q: %w", cleanPath, entry.Addr, parseErr)
+			}
+			if record.Addr != 0 && record.Addr != catalogAddr {
+				return nil, fmt.Errorf("state perturbation %q specifies address %#x, which does not match catalog address %#x", cleanPath, record.Addr, catalogAddr)
+			}
+			record.Addr = catalogAddr
+			record.Name = cleanPath
+			if record.Type == "" {
+				record.Type = entry.Type
+			} else if record.Type != entry.Type {
+				return nil, fmt.Errorf("state perturbation %q has TYPE %q; catalog requires %q", cleanPath, record.Type, entry.Type)
+			}
+			info, typeErr := my_types.ParseSignalType(record.Type)
+			if typeErr != nil {
+				return nil, fmt.Errorf("state perturbation %q: %w", cleanPath, typeErr)
+			}
+			if record.ValueSize == 0 {
+				record.ValueSize = info.Size
+			} else if record.ValueSize != info.Size {
+				return nil, fmt.Errorf("state perturbation %q has VALUE_SIZE %d; %s requires %d", cleanPath, record.ValueSize, record.Type, info.Size)
+			}
+			if _, typeErr = my_types.EncodeSignalValue(record.Value, record.Type); typeErr != nil {
+				return nil, fmt.Errorf("state perturbation %q: %w", cleanPath, typeErr)
+			}
+		} else {
+			if record.Addr == 0 {
+				return nil, fmt.Errorf("state perturbation requires either NAME (catalog path) or ADDR")
+			}
 			info, typeErr := my_types.ParseSignalType(record.Type)
 			if typeErr != nil {
 				return nil, fmt.Errorf("state perturbation at %#x: %w", record.Addr, typeErr)
@@ -179,10 +250,10 @@ func deserializeState(rawData []byte) ([]my_types.StateRecord, error) {
 				return nil, fmt.Errorf("state perturbation at %#x: %w", record.Addr, typeErr)
 			}
 		}
-		log.Println("State Data deserialized")
-		if VERBOSE {
-			log.Println(data)
-		}
+	}
+	log.Println("State Data deserialized")
+	if VERBOSE {
+		log.Println(data)
 	}
 
 	return data, nil
@@ -327,7 +398,7 @@ func handleFalsification(conn net.Conn) {
 	}
 }
 
-func readStatePerturbationFromNet(ctx context.Context, conn net.Conn, ch chan<- []my_types.StateRecord) {
+func readStatePerturbationFromNet(ctx context.Context, conn net.Conn, config *my_types.Configuration, ch chan<- []my_types.StateRecord) {
 
 	for {
 		// read data from network
@@ -340,8 +411,10 @@ func readStatePerturbationFromNet(ctx context.Context, conn net.Conn, ch chan<- 
 		if dataLen == 0 {
 			return
 		}
-		rawPerturbation, err := deserializeState(rawData)
+		rawPerturbation, err := deserializeState(rawData, config)
 		if err != nil {
+			log.Println("Invalid state perturbation:", err)
+			sendSimulationAck(conn, []byte("ERROR: "+err.Error()))
 			return
 		}
 		// send ack to client
@@ -394,7 +467,7 @@ func handleStatePerturbation(conn net.Conn) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// start state perturbation network listener
-	go readStatePerturbationFromNet(ctx, conn, statePertCh)
+	go readStatePerturbationFromNet(ctx, conn, config, statePertCh)
 	// send an ack to the client (so the client can send the state perturbation...)
 	sendSimulationAck(conn, []byte("Simulation started"))
 simulateAndPerturbState:
@@ -423,7 +496,62 @@ simulateAndPerturbState:
 	}
 }
 
-func readPerturbationFromNet(ctx context.Context, conn net.Conn, ch chan<- map[string]interface{}) {
+func deserializeSignalPerturbation(rawData []byte, config *my_types.Configuration) (map[string]interface{}, error) {
+	rawPerturbation, err := deserialize(rawData)
+	if err != nil {
+		return nil, err
+	}
+	timeValues, ok := rawPerturbation["time"].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("signal perturbation requires a time array")
+	}
+	writable := make(map[string]my_types.Signal)
+	for _, group := range config.Writes {
+		for _, sig := range group.Signals {
+			if sig.Path != "" {
+				writable[sig.Path] = sig
+			}
+			if sig.Name != "" {
+				writable[sig.Name] = sig
+			}
+		}
+	}
+	normalized := make(map[string]interface{}, len(rawPerturbation))
+	normalized["time"] = timeValues
+	for key, rawVals := range rawPerturbation {
+		if key == "time" {
+			continue
+		}
+		cleanKey, keyErr := sanitizeCatalogPath(key)
+		if keyErr != nil {
+			return nil, fmt.Errorf("signal perturbation: %w", keyErr)
+		}
+		sig, matched := writable[cleanKey]
+		if !matched {
+			return nil, fmt.Errorf("signal perturbation %q is not a configured writable signal", cleanKey)
+		}
+		vals, ok := rawVals.([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("signal perturbation %q must be an array of values", cleanKey)
+		}
+		if len(vals) != len(timeValues) {
+			return nil, fmt.Errorf("signal perturbation %q has %d values for %d time values", cleanKey, len(vals), len(timeValues))
+		}
+		for _, v := range vals {
+			if _, err := my_types.EncodeSignalValue(v, sig.Type); err != nil {
+				return nil, fmt.Errorf("signal perturbation %q: %w", cleanKey, err)
+			}
+		}
+		canonicalKey := sig.Path
+		if canonicalKey == "" {
+			canonicalKey = sig.Name
+		}
+		normalized[canonicalKey] = vals
+	}
+	return normalized, nil
+}
+
+func readPerturbationFromNet(ctx context.Context, conn net.Conn, config *my_types.Configuration, ch chan<- map[string]interface{}) {
 
 	for {
 		// read data from network
@@ -436,8 +564,10 @@ func readPerturbationFromNet(ctx context.Context, conn net.Conn, ch chan<- map[s
 		if dataLen == 0 {
 			return
 		}
-		rawPerturbation, err := deserialize(rawData)
+		rawPerturbation, err := deserializeSignalPerturbation(rawData, config)
 		if err != nil {
+			log.Println("Invalid signal perturbation:", err)
+			sendSimulationAck(conn, []byte("ERROR: "+err.Error()))
 			return
 		}
 		// send ack to client
@@ -490,7 +620,7 @@ func handleSignalPerturbation(conn net.Conn) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// start perturbation network listener
-	go readPerturbationFromNet(ctx, conn, pertCh)
+	go readPerturbationFromNet(ctx, conn, config, pertCh)
 	// send perturbation started ack to client (so client can send the perturbation...)
 	sendSimulationAck(conn, []byte("Simulation started"))
 simulateAndPerturbSignal:

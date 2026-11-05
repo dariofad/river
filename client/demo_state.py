@@ -16,18 +16,26 @@ def generate_trajectory(model: str, config: str) -> dict:
 
     if model == "2" and config == "1":
         return {
-            "x": ebpf_format(10 + 0.0001 * (t + 1), "float64"),
-            "y": ebpf_format(np.full(CYCLES, 20), "float64"),
+            "Simulink2Code.Simulink2Code_U.x": ebpf_format(
+                10 + 0.0001 * (t + 1), "float64"
+            ),
+            "Simulink2Code.Simulink2Code_U.y": ebpf_format(
+                np.full(CYCLES, 20), "float64"
+            ),
         }
 
     elif model == "3" and config == "3":
         return {
-            "PedalAngle": ebpf_format(np.zeros(CYCLES), "float64"),
-            "EngineSpeed": ebpf_format(np.zeros(CYCLES), "float64"),
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle": ebpf_format(
+                np.zeros(CYCLES), "float64"
+            ),
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.EngineSpeed": ebpf_format(
+                np.zeros(CYCLES), "float64"
+            ),
         }
 
     elif model == "1" and config == "3":
-        return {"d_rel": ebpf_format(np.zeros(451), "float64")}
+        return {"egoCar.egoCar_Y.d_rel": ebpf_format(np.zeros(451), "float64")}
 
     print(f"Warning: No predefined trajectory for m{model}_c{config}. Sending empty.")
     return {}
@@ -39,9 +47,7 @@ def generate_perturbation(model: str, config: str) -> list | None:
         return [
             {
                 "TIME": 5,
-                "VALUE_SIZE": 8,
-                "ADDR": 0x20018,  # replace according to your binary
-                "TYPE": "float64",
+                "NAME": "Simulink2Code.model_offset",
                 "VALUE": 50.0,
             }
         ]
@@ -50,9 +56,10 @@ def generate_perturbation(model: str, config: str) -> list | None:
         return [
             {
                 "TIME": 50,
-                "VALUE_SIZE": 8,
-                "ADDR": 0x30278,  # replace according to your binary
-                "TYPE": "float64",
+                "NAME": (
+                    "AbstractFuelControl_M1."
+                    "AbstractFuelControl_M1_P.Baseopeningangle_Value"
+                ),
                 "VALUE": 16.0,
             }
         ]
@@ -63,13 +70,11 @@ def generate_perturbation(model: str, config: str) -> list | None:
             perturbations.append(
                 {
                     "TIME": 300 + i,
-                    "VALUE_SIZE": 8,
-                    "ADDR": 0x55555556E350,
+                    "NAME": "egoCar.egoCar_X.Integrator1_CSTATE",
                     "VALUE": 25.0,
                 }
             )
-        # return perturbations
-        return []
+        return perturbations
 
     return None
 

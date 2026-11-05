@@ -445,6 +445,10 @@ func TestCompileConfigurationSupportsStaticStates(t *testing.T) {
 	if len(config.Reads) != 1 || len(config.Reads[0].Signals) != 1 || config.Reads[0].Signals[0].Addr == "" {
 		t.Fatalf("static state was not lowered: %#v", config.Reads)
 	}
+	entry, ok := config.Catalog[parameter.Path]
+	if !ok || entry.Addr != config.Reads[0].Signals[0].Addr || entry.Type != parameter.Type {
+		t.Fatalf("catalog entry for %q = %#v, want addr=%q type=%q", parameter.Path, entry, config.Reads[0].Signals[0].Addr, parameter.Type)
+	}
 }
 
 func TestStateSupportMatchesLegacyRuntime(t *testing.T) {

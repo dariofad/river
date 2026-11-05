@@ -11,20 +11,24 @@ from river_api import RiverSession, ebpf_format, get_time_array
 def generate_trajectory(model: str, config: str) -> dict:
     if model == "1" and config == "1":
         t = get_time_array(800)
-        return {"d_rel": ebpf_format(t / 1000.0, "float64")}
+        return {"egoCar.egoCar_Y.d_rel": ebpf_format(t / 1000.0, "float64")}
 
     elif model == "2" and config == "1":
         t = get_time_array(20)
         return {
-            "x": ebpf_format(t * 0.01, "float64"),
-            "y": ebpf_format(t * 0.1, "float64"),
+            "Simulink2Code.Simulink2Code_U.x": ebpf_format(t * 0.01, "float64"),
+            "Simulink2Code.Simulink2Code_U.y": ebpf_format(t * 0.1, "float64"),
         }
 
     elif model == "3" and config == "2":
         t = get_time_array(1001)
         return {
-            "PedalAngle": ebpf_format(t / 100000.0, "float64"),
-            "EngineSpeed": ebpf_format(t / 100000.0, "float64"),
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle": ebpf_format(
+                t / 100000.0, "float64"
+            ),
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.EngineSpeed": ebpf_format(
+                t / 100000.0, "float64"
+            ),
         }
 
     print(f"Warning: No predefined trajectory for m{model}_c{config}. Sending empty.")

@@ -149,3 +149,48 @@ func TestUprobeCookieSupportsSixteenSignals(t *testing.T) {
 		t.Fatalf("cookie size = %d, want %d", size, maxSignalsPerDirection)
 	}
 }
+
+func TestExtractTrajectoryAndPerturbationByPathAndName(t *testing.T) {
+	CYCLES = 2
+	cWrites := []my_types.Signal{
+		{
+			Name: "x",
+			Path: "Simulink2Code.Simulink2Code_U.x",
+			Type: "float64",
+			Addr: "0x20000",
+		},
+		{
+			Name: "y",
+			Path: "Simulink2Code.Simulink2Code_U.y",
+			Type: "float64",
+			Addr: "0x20008",
+		},
+	}
+	config := my_types.Configuration{
+		Writes: []my_types.Group{{Symbol: "step", Signals: cWrites}},
+	}
+
+	// Trajectory keyed by full catalog path
+	traj, err := extractTrajectory(map[string]any{
+		"Simulink2Code.Simulink2Code_U.x": []any{10.0, 11.0},
+		"Simulink2Code.Simulink2Code_U.y": []any{20.0, 21.0},
+	}, config)
+	if err != nil {
+		t.Fatalf("extractTrajectory by path failed: %v", err)
+	}
+	if len(traj["Simulink2Code.Simulink2Code_U.x"]) != 2 || len(traj["Simulink2Code.Simulink2Code_U.y"]) != 2 {
+		t.Fatalf("unexpected trajectory map keys: %#v", traj)
+	}
+
+	// Perturbation keyed by full catalog path
+	records, err := extractPerturbationRecords(map[string]any{
+		"Simulink2Code.Simulink2Code_U.y": []any{99.0},
+		"time":                            []any{int32(1)},
+	}, uint32(len(cWrites)), cWrites)
+	if err != nil {
+		t.Fatalf("extractPerturbationRecords by path failed: %v", err)
+	}
+	if len(records) != 1 || records[0].Time != 1 || records[0].Values[0] != 0 || records[0].Values[1] == 0 {
+		t.Fatalf("unexpected perturbation records: %#v", records)
+	}
+}

@@ -19,22 +19,34 @@ def generate_trajectory(model: str, config: str) -> dict:
     t = get_time_array(CYCLES)
 
     if model == "1" and config == "2":
-        return {"d_rel": ebpf_format(t / 1000.0, "float64")}
+        return {"egoCar.egoCar_Y.d_rel": ebpf_format(t / 1000.0, "float64")}
 
     elif model == "2" and config == "1":
         return {
-            "x": ebpf_format(10 + 0.0001 * (t + 1), "float64"),
-            "y": ebpf_format(np.full(CYCLES, 20), "float64"),
+            "Simulink2Code.Simulink2Code_U.x": ebpf_format(
+                10 + 0.0001 * (t + 1), "float64"
+            ),
+            "Simulink2Code.Simulink2Code_U.y": ebpf_format(
+                np.full(CYCLES, 20), "float64"
+            ),
         }
 
     elif model == "3" and config == "2":
         return {
-            "PedalAngle": ebpf_format(t / 100000.0, "float64"),
-            "EngineSpeed": ebpf_format(t / 100000.0, "float64"),
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle": ebpf_format(
+                t / 100000.0, "float64"
+            ),
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.EngineSpeed": ebpf_format(
+                t / 100000.0, "float64"
+            ),
         }
 
     elif model == "3" and config == "4":
-        return {"PedalAngle": ebpf_format(np.zeros(CYCLES), "float64")}
+        return {
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle": ebpf_format(
+                np.zeros(CYCLES), "float64"
+            )
+        }
 
     else:
         print(
@@ -49,7 +61,7 @@ def generate_perturbation(
     """Generates a live perturbation dictionary."""
     if model == "1" and config == "2":
         return {
-            "d_rel": ebpf_format([100.0], "float64"),
+            "egoCar.egoCar_Y.d_rel": ebpf_format([100.0], "float64"),
             "time": ebpf_format([798], "int32"),
         }
 
@@ -57,11 +69,31 @@ def generate_perturbation(
         t_sub = get_time_array(period // 2)
         period_start = 0 if iterno == 0 else period + random.randint(0, period // 2)
         return {
-            "x": ebpf_format(0.001 * (t_sub + 1), "float64"),
-            "y": ebpf_format(np.full(period // 2, 0.02), "float64"),
+            "Simulink2Code.Simulink2Code_U.x": ebpf_format(
+                0.001 * (t_sub + 1), "float64"
+            ),
+            "Simulink2Code.Simulink2Code_U.y": ebpf_format(
+                np.full(period // 2, 0.02), "float64"
+            ),
             "time": ebpf_format(
                 np.arange(period_start, period_start + period // 2), "int32"
             ),
+        }
+
+    elif model == "3" and config == "2":
+        return {
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle": ebpf_format(
+                [-float(i) for i in range(10)], "float64"
+            ),
+            "time": ebpf_format(np.arange(990, 1000), "int32"),
+        }
+
+    elif model == "3" and config == "4":
+        return {
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle": ebpf_format(
+                [float(i) / 30 for i in range(450)], "float64"
+            ),
+            "time": ebpf_format(np.arange(50, 500), "int32"),
         }
 
     return None

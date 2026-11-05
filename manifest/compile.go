@@ -48,7 +48,7 @@ func CompileConfiguration(m *Manifest) (*my_types.Configuration, error) {
 	// post_outputs phase. A fully manual manifest can compile from ELF symbols.
 	dw, _ := ef.DWARF()
 
-	config := &my_types.Configuration{ModelPath: absolute, MinorToMajorRatio: strconv.FormatUint(uint64(m.Settings.SampleEvery), 10), NofCycles: strconv.FormatUint(uint64(m.Settings.Cycles), 10), Reads: []my_types.Group{}, Writes: []my_types.Group{}}
+	config := &my_types.Configuration{ModelPath: absolute, MinorToMajorRatio: strconv.FormatUint(uint64(m.Settings.SampleEvery), 10), NofCycles: strconv.FormatUint(uint64(m.Settings.Cycles), 10), Reads: []my_types.Group{}, Writes: []my_types.Group{}, Catalog: make(map[string]my_types.Signal)}
 	var problems []string
 	if m.Settings.Cycles == 0 {
 		problems = append(problems, "settings.cycles must be at least 1")
@@ -75,24 +75,30 @@ func CompileConfiguration(m *Manifest) (*my_types.Configuration, error) {
 		requiresDiscoveredData := modelUsesDiscoveredData(configured, catalog)
 		instanceAddress, stepAddress := uint64(0), uint64(0)
 		addressOK := false
+		if dm != nil {
+			if step, err := findFunctionSymbol(ef, dm.Funcs["step"]); err == nil {
+				stepAddress = step.Value
+			}
+			if len(dm.InstanceAddresses) == 1 {
+				addressOK = true
+				instanceAddress = dm.InstanceAddresses[0]
+			}
+		}
 		if requiresDiscoveredData {
 			if dm == nil {
 				problems = append(problems, fmt.Sprintf("model %q uses discovered data but is not present in the target ELF", configured.Name))
 			} else {
-				step, err := findFunctionSymbol(ef, dm.Funcs["step"])
-				if err != nil {
-					problems = append(problems, fmt.Sprintf("model %q: %v", configured.Name, err))
-				} else {
-					stepAddress = step.Value
+				if stepAddress == 0 {
+					if _, err := findFunctionSymbol(ef, dm.Funcs["step"]); err != nil {
+						problems = append(problems, fmt.Sprintf("model %q: %v", configured.Name, err))
+					}
 				}
-				addressOK = len(dm.InstanceAddresses) == 1
 				if !addressOK {
 					problems = append(problems, fmt.Sprintf("model %q must have exactly one statically addressable instance; found %d", configured.Name, len(dm.InstanceAddresses)))
-				} else {
-					instanceAddress = dm.InstanceAddresses[0]
 				}
 			}
 		}
+		populateRuntimeCatalog(ef, catalog, dm, instanceAddress, addressOK, stepAddress, config.Catalog)
 		seenSelections := make(map[string]bool)
 		for _, selected := range configured.Hooks {
 			key := selected.ID + "\x00" + selected.Phase + "\x00" + selected.Action
@@ -312,6 +318,46 @@ func modelUsesDiscoveredData(model Model, catalog map[string]Data) bool {
 	return false
 }
 
+func populateRuntimeCatalog(ef *elf.File, catalog map[string]Data, dm *discoveredModel, instanceAddress uint64, addressOK bool, stepAddress uint64, dst map[string]my_types.Signal) {
+	for path, item := range catalog {
+		if item.Address == nil && !item.Supported {
+			continue
+		}
+		info, err := my_types.ParseSignalType(item.Type)
+		if err != nil {
+			continue
+		}
+		var address uint64
+		if item.Address != nil {
+			address = uint64(*item.Address)
+		} else {
+			if dm == nil {
+				continue
+			}
+			discovered, ok := dm.Data[path]
+			if !ok || discovered.Type.Name != item.Type {
+				continue
+			}
+			var resolved bool
+			address, resolved = configurationAddress(discovered, instanceAddress, addressOK, stepAddress)
+			if !resolved {
+				continue
+			}
+		}
+		// Only include catalog entries that lie within a writable load segment so
+		// runtime perturbations resolved by catalog path are guaranteed to target
+		// writable model memory.
+		if err := validateDataRange(ef, address, uint64(info.Size), true); err != nil {
+			continue
+		}
+		name := item.Name
+		if name == "" {
+			name = path
+		}
+		dst[path] = my_types.Signal{Name: name, Path: path, Type: item.Type, Addr: fmt.Sprintf("0x%x", address)}
+	}
+}
+
 func compileSelection(ef *elf.File, selected HookSelection, catalog map[string]Data, dm *discoveredModel, instanceAddress uint64, addressOK bool, stepAddress uint64, problems *[]string) []my_types.Signal {
 	seenPaths := make(map[string]bool, len(selected.Data))
 	signals := make([]my_types.Signal, 0, len(selected.Data))
@@ -366,7 +412,7 @@ func compileSelection(ef *elf.File, selected HookSelection, catalog map[string]D
 			*problems = append(*problems, fmt.Sprintf("data %q: %v", item.Path, err))
 			continue
 		}
-		signals = append(signals, my_types.Signal{Name: item.Name, Type: item.Type, Addr: fmt.Sprintf("0x%x", address)})
+		signals = append(signals, my_types.Signal{Name: item.Name, Path: item.Path, Type: item.Type, Addr: fmt.Sprintf("0x%x", address)})
 	}
 	return signals
 }

@@ -21,7 +21,7 @@ Use them to test the simulation server and analyze the approach.
 - To view live plots of CLI demo runs in the browser, run `make plot` (or
   `make dash`) from `../dashboard`.
 
-For the live state perturbation demos, make sure the address of the
-state variables `ADDR` is valid for your local environment (again, see
-`../simulator/README.md`)
+For the live state perturbation demos, perturbations can reference variables by
+their full catalog path (`NAME`) from the manifest, or specify a raw ELF virtual
+address (`ADDR`) valid for your local environment (see `../simulator/README.md`).
 

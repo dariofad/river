@@ -13,14 +13,17 @@ def build_request(filename: str, manifest: dict[str, Any]) -> dict[str, Any]:
     cycles = manifest["settings"]["cycles"]
     time = range(cycles)
     if filename == "dualACC":
-        return {"d_rel": [value / 1000.0 for value in time]}
+        return {"egoCar.egoCar_Y.d_rel": [value / 1000.0 for value in time]}
     if filename == "Simulink2Code":
         return {
-            "x": [value * 0.01 for value in time],
-            "y": [value * 0.1 for value in time],
+            "Simulink2Code.Simulink2Code_U.x": [value * 0.01 for value in time],
+            "Simulink2Code.Simulink2Code_U.y": [value * 0.1 for value in time],
         }
     values = [value / 100000.0 for value in time]
-    return {"PedalAngle": values, "EngineSpeed": values}
+    return {
+        "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle": values,
+        "AbstractFuelControl_M1.AbstractFuelControl_M1_U.EngineSpeed": values,
+    }
 
 
 def run(sock, trajectory: dict[str, Any], run: ScenarioRun, manifest_text: str) -> None:

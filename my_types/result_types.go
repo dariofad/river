@@ -8,6 +8,7 @@ type ModelRecord struct {
 
 type StateRecord struct {
 	Time      uint32 `msgpack:"TIME"`
+	Name      string `msgpack:"NAME,omitempty"`
 	ValueSize uint32 `msgpack:"VALUE_SIZE"`
 	// Addr is a virtual address in the target ELF image, not a runtime address.
 	Addr  uint64 `msgpack:"ADDR"`

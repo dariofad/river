@@ -11,32 +11,46 @@ RESULTS = "redis"
 def build_request(filename: str, manifest: dict[str, Any]) -> dict[str, Any]:
     cycles = manifest["settings"]["cycles"]
     time_values = range(cycles)
-    if filename == "Simulink2Code":
+    if filename == "dualACC":
+        trajectory = {"egoCar.egoCar_Y.d_rel": [0.0] * cycles}
+        perturbations = [
+            {
+                "TIME": 300 + i,
+                "NAME": "egoCar.egoCar_X.Integrator1_CSTATE",
+                "VALUE": 25.0,
+            }
+            for i in range(30)
+        ]
+        delay = 0
+    elif filename == "Simulink2Code":
         trajectory = {
-            "x": [10 + 0.0001 * (value + 1) for value in time_values],
-            "y": [20.0] * cycles,
+            "Simulink2Code.Simulink2Code_U.x": [
+                10 + 0.0001 * (value + 1) for value in time_values
+            ],
+            "Simulink2Code.Simulink2Code_U.y": [20.0] * cycles,
         }
         perturbations = [
             {
                 "TIME": 5,
-                "VALUE_SIZE": 8,
-                "ADDR": 0x20018,
-                "TYPE": "float64",
+                "NAME": "Simulink2Code.model_offset",
                 "VALUE": 50.0,
             }
         ]
         delay = 3
     else:
         trajectory = {
-            "PedalAngle": [0.0] * cycles,
-            "EngineSpeed": [0.0] * cycles,
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.PedalAngle": [0.0]
+            * cycles,
+            "AbstractFuelControl_M1.AbstractFuelControl_M1_U.EngineSpeed": [0.0]
+            * cycles,
         }
         perturbations = [
             {
                 "TIME": 50,
-                "VALUE_SIZE": 8,
-                "ADDR": 0x30278,
-                "TYPE": "float64",
+                "NAME": (
+                    "AbstractFuelControl_M1."
+                    "AbstractFuelControl_M1_P.Baseopeningangle_Value"
+                ),
                 "VALUE": 16.0,
             }
         ]

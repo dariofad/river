@@ -69,8 +69,11 @@ the model starts. It supports `bool`, signed and unsigned 8/16/32/64-bit
 integers, `float32`, and `float64` scalar data.
 
 Signal perturbations add numeric values at their native width and toggle
-booleans. State perturbation messages must specify `TYPE`, matching
-`VALUE_SIZE`, and an ELF virtual `ADDR` (not an ASLR runtime address).
+booleans. State perturbation messages can identify the target either by its
+full catalog path in `NAME` (e.g., `Simulink2Code.model_offset`, resolved by
+the server against the active manifest's catalog) or by an explicit ELF virtual
+`ADDR` (not an ASLR runtime address), together with matching `TYPE` and
+`VALUE_SIZE`.
 
 ## Demo manifests
 

@@ -75,6 +75,36 @@ func setCycles(spec *ebpf.CollectionSpec, config my_types.Configuration) error {
 	return nil
 }
 
+func signalKey(signal my_types.Signal) string {
+	if signal.Path != "" {
+		return signal.Path
+	}
+	return signal.Name
+}
+
+func lookupTrajectoryValues(rawTrajectory map[string]interface{}, signal my_types.Signal) ([]interface{}, bool) {
+	if signal.Path != "" {
+		if vals, ok := rawTrajectory[signal.Path].([]interface{}); ok {
+			return vals, true
+		}
+	}
+	if signal.Name != "" {
+		if vals, ok := rawTrajectory[signal.Name].([]interface{}); ok {
+			return vals, true
+		}
+	}
+	return nil, false
+}
+
+func matchWritableSignal(key string, cWrites []my_types.Signal) (my_types.Signal, bool) {
+	for _, configured := range cWrites {
+		if (configured.Path != "" && configured.Path == key) || configured.Name == key {
+			return configured, true
+		}
+	}
+	return my_types.Signal{}, false
+}
+
 // Converts raw simulation data to a proper trajectory
 func extractTrajectory(rawTrajectory map[string]interface{}, config my_types.Configuration) (map[string][]uint64, error) {
 
@@ -82,24 +112,25 @@ func extractTrajectory(rawTrajectory map[string]interface{}, config my_types.Con
 	// todo: multiple writes on the same signal can lead to a wrong trajectory
 	for _, group := range config.Writes {
 		for _, signal := range group.Signals {
+			key := signalKey(signal)
 			vals := make([]uint64, CYCLES)
-			if rawTrajectory, ok := rawTrajectory[signal.Name].([]interface{}); ok {
-				if len(rawTrajectory) != int(CYCLES) {
-					return nil, fmt.Errorf("trajectory for %s has %d values; expected %d", signal.Name, len(rawTrajectory), CYCLES)
+			if signalTrajectory, ok := lookupTrajectoryValues(rawTrajectory, signal); ok {
+				if len(signalTrajectory) != int(CYCLES) {
+					return nil, fmt.Errorf("trajectory for %s has %d values; expected %d", key, len(signalTrajectory), CYCLES)
 				}
-				for t, rawVal := range rawTrajectory {
+				for t, rawVal := range signalTrajectory {
 					val, err := my_types.EncodeSignalValue(rawVal, signal.Type)
 					if err != nil {
-						log.Printf("Cannot convert trajectory value %v for %s: %v", rawVal, signal.Name, err)
-						return nil, fmt.Errorf("convert trajectory value for %s: %w", signal.Name, err)
+						log.Printf("Cannot convert trajectory value %v for %s: %v", rawVal, key, err)
+						return nil, fmt.Errorf("convert trajectory value for %s: %w", key, err)
 					}
 					vals[t] = val
 				}
 			} else {
-				log.Printf("Cannot extract raw trajectory for signal %s", signal.Name)
+				log.Printf("Cannot extract raw trajectory for signal %s", key)
 				return nil, errors.New("Trajectory extraction error")
 			}
-			trajectory[signal.Name] = vals
+			trajectory[key] = vals
 		}
 	}
 	return trajectory, nil
@@ -265,10 +296,10 @@ func Start(
 		// inject the trajectory
 		if s >= int(nof_signals_read) { // only for signals to write
 			sw := int(s - int(nof_signals_read))
-			sName := cWrites[sw].Name
-			log.Printf("sName: %v", sName)
+			sKey := signalKey(cWrites[sw])
+			log.Printf("sName: %v", sKey)
 			// set the trajectory with a batch update
-			_, err = inner.BatchUpdate(innerMapKeys, trajectory[sName], &ebpf.BatchOptions{
+			_, err = inner.BatchUpdate(innerMapKeys, trajectory[sKey], &ebpf.BatchOptions{
 				Flags: uint64(ebpf.UpdateAny),
 			})
 			if err != nil {
@@ -577,17 +608,18 @@ func Start(
 					}
 					defer tempFile.Close()
 					for _, r := range perturbation {
-						runtimeAddress, ok := addUint64(r.Addr, loadBias)
-						if !ok {
-							log.Printf("State perturbation address %#x overflows after relocation", r.Addr)
-							break
-						}
-						binary.Write(tempFile, binary.LittleEndian, r.Time)
-						binary.Write(tempFile, binary.LittleEndian, r.ValueSize)
-						binary.Write(tempFile, binary.LittleEndian, runtimeAddress)
 						info, valueErr := my_types.ParseSignalType(r.Type)
 						if valueErr != nil || r.ValueSize != info.Size {
 							log.Printf("Invalid state perturbation type/size for %#x", r.Addr)
+							break
+						}
+						if err := relocation.image.validateDataRange(r.Addr, uint64(r.ValueSize), true); err != nil {
+							log.Printf("Invalid state perturbation address range: %v", err)
+							break
+						}
+						runtimeAddress, ok := addUint64(r.Addr, loadBias)
+						if !ok {
+							log.Printf("State perturbation address %#x overflows after relocation", r.Addr)
 							break
 						}
 						bits, valueErr := my_types.EncodeSignalValue(r.Value, r.Type)
@@ -595,6 +627,9 @@ func Start(
 							log.Printf("Invalid state perturbation value: %v", valueErr)
 							break
 						}
+						binary.Write(tempFile, binary.LittleEndian, r.Time)
+						binary.Write(tempFile, binary.LittleEndian, r.ValueSize)
+						binary.Write(tempFile, binary.LittleEndian, runtimeAddress)
 						binary.Write(tempFile, binary.LittleEndian, bits)
 					}
 
@@ -826,31 +861,25 @@ func extractPerturbationRecords(data map[string]interface{}, nof_signals_written
 		}
 		vals := make([]uint64, 0)
 		if rawSignal, ok := data[signal].([]interface{}); ok {
-			var signalType string
-			for _, configured := range cWrites {
-				if configured.Name == signal {
-					signalType = configured.Type
-					break
-				}
-			}
-			if signalType == "" {
+			configured, matched := matchWritableSignal(signal, cWrites)
+			if !matched {
 				return nil, fmt.Errorf("unknown writable signal %q", signal)
 			}
 			for _, rawVal := range rawSignal {
-				val, err := my_types.EncodeSignalValue(rawVal, signalType)
+				val, err := my_types.EncodeSignalValue(rawVal, configured.Type)
 				if err != nil {
 					return nil, fmt.Errorf("convert perturbation value for %s: %w", signal, err)
 				}
 				vals = append(vals, val)
 			}
+			if len(vals) != len(timeVals) {
+				return nil, fmt.Errorf("perturbation %q has %d values for %d time values", signal, len(vals), len(timeVals))
+			}
+			signalVals[signalKey(configured)] = vals
 		} else {
-			log.Print("Cannot extract raw values for %v", signal)
+			log.Printf("Cannot extract raw values for %v", signal)
 			return nil, errors.New("Perturbation extraction error")
 		}
-		if len(vals) != len(timeVals) {
-			return nil, fmt.Errorf("perturbation %q has %d values for %d time values", signal, len(vals), len(timeVals))
-		}
-		signalVals[signal] = vals
 	}
 	// pack into model records and return
 	pertRecords := make([]my_types.ModelRecord, 0)
@@ -860,7 +889,7 @@ func extractPerturbationRecords(data map[string]interface{}, nof_signals_written
 		record.Filler = 0
 		record.Values = make([]uint64, nof_signals_written)
 		for signal_pos, signal := range cWrites {
-			if vals, ok := signalVals[signal.Name]; ok {
+			if vals, ok := signalVals[signalKey(signal)]; ok {
 				record.Values[signal_pos] = vals[p]
 			} else {
 				// append zero

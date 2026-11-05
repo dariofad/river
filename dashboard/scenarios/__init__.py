@@ -10,8 +10,8 @@ SCENARIOS = {
 SUPPORTED_BINARIES = {
     "monitoring": {"dualACC", "Simulink2Code", "fuel_control", "Tester"},
     "falsification": {"dualACC", "Simulink2Code", "fuel_control"},
-    "state_perturbation": {"Simulink2Code", "fuel_control"},
-    "signal_perturbation": {"dualACC", "Simulink2Code"},
+    "state_perturbation": {"dualACC", "Simulink2Code", "fuel_control"},
+    "signal_perturbation": {"dualACC", "Simulink2Code", "fuel_control"},
 }
 
 DEMO_MANIFESTS = {
