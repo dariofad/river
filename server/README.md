@@ -6,9 +6,18 @@ TCP/IP.
 It can be executed within a VM, provided that a host-only network is
 created.
 
-Data serialization is performed via MessagePack using a native
-external implementation, hence a MEX file is required (see the
-following).
+Data serialization is performed via MessagePack using length-prefixed frames
+(4-byte big-endian length followed by a MessagePack payload) in both directions.
+
+Every server response is a MessagePack map with:
+- `status`: `"started"`, `"ack"`, `"completed"`, or `"error"`
+- `category` *(optional)*: error category when `status == "error"` (`"request_error"`, `"manifest_error"`, `"trajectory_error"`, `"perturbation_error"`, `"ebpf_error"`, `"target_error"`, or `"redis_error"`)
+- `message` *(optional)*: human-readable status or error description
+- `OUT_SIGNALS` *(optional)*: output trace array returned upon completion in `falsification` mode
+
+The server also maintains the current simulation status and any error details in Redis under `simulation:0:status` (cleared and updated automatically on each new simulation run).
+
+For MATLAB clients, a native external MessagePack implementation (MEX file) is required (see the following).
 
 ## Prerequisites and build notes
 

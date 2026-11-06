@@ -17,9 +17,12 @@ Use them to test the simulation server and analyze the approach.
   `river-manifest repair` in memory to replace `$MODELS_DIR` and `$BUILD_ID` in the
   demo manifest template for your local environment and architecture.
 - Run a demo, for example with `make monit m=1 c=1` or
-  `make monit m=1 c=1 MODELS_DIR=/path/to/models` (default `HOST` is 127.0.0.1)
-- To view live plots of CLI demo runs in the browser, run `make plot` (or
-  `make dash`) from `../dashboard`.
+  `make monit m=1 c=1 MODELS_DIR=/path/to/models` (default `HOST` is 127.0.0.1).
+  Each demo waits for the server's `"started"` confirmation after the eBPF probes
+  are attached to the target process, and reports structured server errors
+  (`[category] message`) if validation or execution fails.
+- To view live plots and simulation status/errors of CLI demo runs in the browser,
+  run `make plot` (or `make dash`) from `../dashboard`.
 
 For the live state perturbation demos, perturbations can reference variables by
 their full catalog path (`NAME`) from the manifest, or specify a raw ELF virtual

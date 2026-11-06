@@ -4,8 +4,10 @@ River is configured in memory through a manifest YAML sent with the simulation
 request. Before a simulation starts, River parses the manifest in memory,
 validates its binary fingerprint, resolves hooks and data addresses, and
 constructs its runtime configuration in memory. When streaming results to Redis,
-River also stores the active read-signal names in Redis (`simulation:0:signals`)
-so live viewers do not depend on a manifest file on disk.
+River clears previous simulation artifacts and stores the active read-signal
+names (`simulation:0:signals`) as well as the live simulation state and any
+categorized error (`simulation:0:status`) in Redis so live viewers do not
+depend on a manifest file on disk and can track simulation progress or errors.
 
 The client demo targets load and repair one checked-in scenario manifest template
 directly in memory:
