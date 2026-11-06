@@ -100,8 +100,8 @@ def main():
             session.send_payload({"manifest": manifest_text, "trajectory": trajectory})
 
             # 2. Wait for simulation started ACK
-            ack = session.wait_for_ack(64)
-            print(ack)
+            ack = session.wait_for_ack(expected_status="started")
+            print(f"[Server]: {ack}")
 
             # 3. Send state perturbation
             if perturbations is not None:
@@ -111,15 +111,16 @@ def main():
                 session.send_payload(perturbations)
 
                 # wait for perturbation ack
-                p_ack = session.wait_for_ack(64)
-                print(p_ack)
+                p_ack = session.wait_for_ack(expected_status="ack")
+                print(f"[Server]: {p_ack}")
 
             # 4. Wait for end of simulation
-            final_resp = session.wait_for_ack(64)
-            print(final_resp)
+            final_resp = session.wait_for_ack(expected_status="completed")
+            print(f"[Final]: {final_resp}")
 
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

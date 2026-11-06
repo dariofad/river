@@ -16,11 +16,22 @@ REDIS_PORT = int(os.environ.get("RIVER_REDIS_PORT", "6379"))
 REDIS_DB = int(os.environ.get("RIVER_REDIS_DB", "0"))
 ZSET_KEY = "simulation:0"
 SIGNALS_KEY = "simulation:0:signals"
+STATUS_KEY = "simulation:0:status"
+
+
+class RiverServerError(RuntimeError):
+    """Raised when the River server returns an error status."""
+
+    def __init__(self, message: str, category: str = ""):
+        self.category = category
+        self.detail = message
+        prefix = f"[{category}] " if category else ""
+        super().__init__(f"{prefix}{message}")
 
 
 @dataclass
 class ScenarioRun:
-    state: tuple[str, str] = ("running", "Simulation is running.")
+    state: tuple[str, str] = ("starting", "Starting simulation…")
     result: dict[str, Any] | None = None
 
 
@@ -28,13 +39,6 @@ def send_payload(sock: socket.socket, data: dict | list) -> None:
     payload = cast(bytes, msgpack.packb(data))
     sock.sendall(len(payload).to_bytes(4, "big"))
     sock.sendall(payload)
-
-
-def receive_ack(sock: socket.socket) -> str:
-    ack = receive_exact(sock, 64).rstrip(b"\x00").decode("utf-8")
-    if ack.startswith("ERROR:"):
-        raise RuntimeError(ack)
-    return ack
 
 
 def receive_exact(sock: socket.socket, size: int) -> bytes:
@@ -50,6 +54,40 @@ def receive_exact(sock: socket.socket, size: int) -> bytes:
 def receive_payload(sock: socket.socket) -> bytes:
     size = int.from_bytes(receive_exact(sock, 4), "big")
     return receive_exact(sock, size)
+
+
+def receive_response(
+    sock: socket.socket,
+    expected_status: str | tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    raw = receive_payload(sock)
+    response = msgpack.unpackb(raw, raw=False)
+    if not isinstance(response, dict):
+        raise RuntimeError(f"Unexpected server response format: {response!r}")
+    status = str(response.get("status", ""))
+    if status == "error":
+        raise RiverServerError(
+            str(response.get("message", "Unknown simulation error")),
+            str(response.get("category", "")),
+        )
+    if expected_status is not None:
+        allowed = (
+            (expected_status,) if isinstance(expected_status, str) else expected_status
+        )
+        if status not in allowed:
+            raise RuntimeError(
+                f"Unexpected server status {status!r} (expected {allowed}): "
+                f"{response.get('message', '')}"
+            )
+    return response
+
+
+def receive_ack(
+    sock: socket.socket,
+    expected_status: str | tuple[str, ...] | None = None,
+) -> str:
+    response = receive_response(sock, expected_status=expected_status)
+    return str(response.get("message") or response.get("status", ""))
 
 
 def launch(
@@ -82,7 +120,7 @@ def launch(
 def clear_results() -> None:
     client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
     try:
-        client.delete("simulation", ZSET_KEY, SIGNALS_KEY)
+        client.delete("simulation", ZSET_KEY, SIGNALS_KEY, STATUS_KEY)
     except redis.RedisError as exc:
         raise RuntimeError(
             f"Could not clear Redis at {REDIS_HOST}:{REDIS_PORT}: {exc}. "
@@ -90,6 +128,33 @@ def clear_results() -> None:
         ) from exc
     finally:
         client.close()
+
+
+def read_redis_status() -> tuple[str, str] | None:
+    client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+    try:
+        raw_status = cast(bytes | None, client.get(STATUS_KEY))
+    except redis.RedisError:
+        return None
+    finally:
+        client.close()
+
+    if raw_status is None:
+        return None
+    unpacked = msgpack.unpackb(raw_status, raw=False)
+    if not isinstance(unpacked, dict):
+        return None
+    status = str(unpacked.get("status", ""))
+    message = str(unpacked.get("message", ""))
+    category = str(unpacked.get("category", ""))
+    if status == "error":
+        prefix = f"[{category}] " if category else ""
+        return ("error", f"{prefix}{message}")
+    if status == "completed":
+        return ("complete", message or "Simulation completed.")
+    if status in ("starting", "started", "running"):
+        return ("running", message or "Simulation is running.")
+    return None
 
 
 def read_signal_names(manifest: dict[str, Any]) -> list[str]:
@@ -149,7 +214,9 @@ def read_redis_results(manifest: dict[str, Any] | None = None) -> pd.DataFrame:
 def read_response_results(run: ScenarioRun) -> pd.DataFrame:
     if run.result is None:
         return pd.DataFrame()
-    signals = run.result["OUT_SIGNALS"]
+    signals = run.result.get("OUT_SIGNALS", [])
+    if not signals:
+        return pd.DataFrame()
     columns = {signal["NAME"]: signal["VALUES"] for signal in signals}
     columns = {"time": range(len(signals[0]["VALUES"])), **columns}
     return pd.DataFrame(columns)

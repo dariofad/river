@@ -25,4 +25,5 @@ def build_request(filename: str, manifest: dict[str, Any]) -> dict[str, Any]:
 
 def run(sock, trajectory: dict[str, Any], run: ScenarioRun, manifest_text: str) -> None:
     send_payload(sock, {"manifest": manifest_text, "trajectory": trajectory})
-    run.state = ("complete", receive_ack(sock))
+    run.state = ("running", receive_ack(sock, expected_status="started"))
+    run.state = ("complete", receive_ack(sock, expected_status="completed"))

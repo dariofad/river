@@ -51,13 +51,15 @@ def main():
             print(f"[*] Connecting to {args.host}:8080...", file=sys.stderr)
             session.send_payload({"manifest": manifest_text, "trajectory": trajectory})
 
-            # Wait for response
-            if session.sock:
-                response = session.sock.recv(4096)
-                print(response.decode("utf-8"))
+            start_msg = session.wait_for_ack(expected_status="started")
+            print(f"[Server]: {start_msg}")
+
+            final_msg = session.wait_for_ack(expected_status="completed")
+            print(f"[Final]: {final_msg}")
 
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

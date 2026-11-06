@@ -1,4 +1,5 @@
 import socket
+from typing import Any
 
 import msgpack
 import numpy as np
@@ -16,6 +17,16 @@ SUPPORTED_TYPES = {
     "float32": np.float32,
     "float64": np.float64,
 }
+
+
+class RiverServerError(RuntimeError):
+    """Raised when the River server returns an error status."""
+
+    def __init__(self, message: str, category: str = ""):
+        self.category = category
+        self.detail = message
+        prefix = f"[{category}] " if category else ""
+        super().__init__(f"{prefix}{message}")
 
 
 def ebpf_format(array, dtype_str: str) -> list:
@@ -43,7 +54,7 @@ class RiverSession:
         self.sock.connect((self.host, self.port))
 
     def send_payload(self, data: dict | list):
-        """Packs and sends a dictionary payload."""
+        """Packs and sends a dictionary or list payload."""
         if not self.sock:
             raise RuntimeError("Socket not connected.")
         payload = msgpack.packb(data)
@@ -52,29 +63,56 @@ class RiverSession:
         self.sock.sendall(len(payload).to_bytes(4, "big"))
         self.sock.sendall(payload)
 
-    def wait_for_ack(self, bufsize: int = 64) -> str:
-        """Waits for a standard string ACK (e.g., in demo_sign.py or demo_state.py)."""
+    def _receive_exact(self, size: int) -> bytes:
         if not self.sock:
             raise RuntimeError("Socket not connected.")
-        return self.sock.recv(bufsize).decode("utf-8")
-
-    def receive_data(self) -> bytes:
-        """Receives length-prefixed data (e.g., in demo_fals.py or demo_monit.py)."""
-        if not self.sock:
-            raise RuntimeError("Socket not connected.")
-        resp_size_bytes = self.sock.recv(4)
-        if not resp_size_bytes:
-            return b""
-        resp_len = int.from_bytes(resp_size_bytes, byteorder="big")
-
         data = bytearray()
-        bytes_received = 0
-        while bytes_received < resp_len:
-            chunk = self.sock.recv(resp_len - bytes_received)
+        while len(data) < size:
+            chunk = self.sock.recv(size - len(data))
             if not chunk:
-                break
+                raise RuntimeError(
+                    "The server closed the connection during the response."
+                )
             data.extend(chunk)
         return bytes(data)
+
+    def receive_data(self) -> bytes:
+        """Receives length-prefixed raw bytes from the server."""
+        resp_size_bytes = self._receive_exact(4)
+        resp_len = int.from_bytes(resp_size_bytes, byteorder="big")
+        return self._receive_exact(resp_len)
+
+    def receive_response(
+        self, expected_status: str | tuple[str, ...] | None = None
+    ) -> dict[str, Any]:
+        """Receives and unpacks a structured ServerResponse dictionary."""
+        raw = self.receive_data()
+        response = msgpack.unpackb(raw, raw=False)
+        if not isinstance(response, dict):
+            raise RuntimeError(f"Unexpected server response format: {response!r}")
+        status = str(response.get("status", ""))
+        if status == "error":
+            raise RiverServerError(
+                str(response.get("message", "Unknown simulation error")),
+                str(response.get("category", "")),
+            )
+        if expected_status is not None:
+            allowed = (
+                (expected_status,)
+                if isinstance(expected_status, str)
+                else expected_status
+            )
+            if status not in allowed:
+                raise RuntimeError(
+                    f"Unexpected server status {status!r} (expected {allowed}): "
+                    f"{response.get('message', '')}"
+                )
+        return response
+
+    def wait_for_ack(self, expected_status: str | tuple[str, ...] | None = None) -> str:
+        """Waits for a server response and returns its human-readable message."""
+        response = self.receive_response(expected_status=expected_status)
+        return str(response.get("message") or response.get("status", ""))
 
     def close(self):
         if self.sock:

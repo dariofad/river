@@ -1,8 +1,6 @@
 from typing import Any
 
-import msgpack
-
-from .common import ScenarioRun, receive_payload, send_payload
+from .common import ScenarioRun, receive_ack, receive_response, send_payload
 
 LABEL = "Falsification"
 PORT = 8081
@@ -28,5 +26,7 @@ def build_request(filename: str, manifest: dict[str, Any]) -> dict[str, Any]:
 
 def run(sock, trajectory: dict[str, Any], run: ScenarioRun, manifest_text: str) -> None:
     send_payload(sock, {"manifest": manifest_text, "trajectory": trajectory})
-    run.result = msgpack.unpackb(receive_payload(sock), raw=False)
-    run.state = ("complete", "Falsification completed.")
+    run.state = ("running", receive_ack(sock, expected_status="started"))
+    response = receive_response(sock, expected_status="completed")
+    run.result = response
+    run.state = ("complete", str(response.get("message") or "Falsification completed."))

@@ -36,7 +36,7 @@ list:
 
 clean_cache:
 	@ echo "Cleaning the KeyValue cache..."
-	@ docker exec redis redis-cli DEL "simulation" "simulation:0" "simulation:0:signals"
+	@ docker exec redis redis-cli DEL "simulation" "simulation:0" "simulation:0:signals" "simulation:0:status"
 
 monit: clean_cache
 	@ chmod +x ../simulator/_utils/list_signals.py

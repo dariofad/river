@@ -3,7 +3,6 @@
 import argparse
 import sys
 
-import msgpack
 from active_manifest import read_manifest_text
 from river_api import RiverSession, ebpf_format, get_time_array
 
@@ -52,14 +51,15 @@ def main():
             print(f"[*] Connecting to {args.host}:8081...", file=sys.stderr)
             session.send_payload({"manifest": manifest_text, "trajectory": trajectory})
 
-            # Wait for data (prefixed with 4-byte length)
-            print("[*] Receiving response data...", file=sys.stderr)
-            result_bytes = session.receive_data()
+            start_msg = session.wait_for_ack(expected_status="started")
+            print(f"[Server]: {start_msg}", file=sys.stderr)
 
-            if result_bytes:
-                unpacked_res = msgpack.unpackb(result_bytes)
+            print("[*] Receiving response data...", file=sys.stderr)
+            unpacked_res = session.receive_response(expected_status="completed")
+            out_signals = unpacked_res.get("OUT_SIGNALS", [])
+            if out_signals:
                 print("(...first 15 output trace records)")
-                for sign in unpacked_res.get("OUT_SIGNALS", []):
+                for sign in out_signals:
                     print(sign["NAME"])
                     print(*(sign["VALUES"][:15]), "...")
             else:
@@ -67,6 +67,7 @@ def main():
 
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

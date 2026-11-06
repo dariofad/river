@@ -3,7 +3,12 @@ from typing import Any, cast
 import plotly.express as px
 import streamlit as st
 from scenarios import SCENARIOS
-from scenarios.common import ScenarioRun, read_redis_results, read_response_results
+from scenarios.common import (
+    ScenarioRun,
+    read_redis_results,
+    read_redis_status,
+    read_response_results,
+)
 
 st.title("3. Simulation results")
 
@@ -25,12 +30,16 @@ else:
 def live_results() -> None:
     if not cli_mode:
         status, message = active_run.state
-        if status == "running":
-            st.info(message)
-        elif status == "complete":
-            st.success(message)
-        else:
-            st.error(message)
+    else:
+        redis_state = read_redis_status()
+        status, message = redis_state if redis_state is not None else ("", "")
+
+    if status in ("starting", "running"):
+        st.info(message)
+    elif status == "complete":
+        st.success(message)
+    elif status == "error":
+        st.error(message)
 
     try:
         if cli_mode:
@@ -44,7 +53,8 @@ def live_results() -> None:
         return
 
     if dataframe.empty:
-        st.info("Waiting for simulation data…")
+        if status != "error":
+            st.info("Waiting for simulation data…")
         return
 
     signal_columns = [column for column in dataframe.columns if column != "time"]
