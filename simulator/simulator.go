@@ -28,6 +28,14 @@ var BENCH bool
 var RATIO uint32
 var CYCLES uint32
 
+const (
+	redisSimulationSetKey = "simulation"
+	redisSimulationID     = "0"
+	redisSimulationKey    = "simulation:0"
+	redisSignalsKey       = "simulation:0:signals"
+	redisStatusKey        = "simulation:0:status"
+)
+
 type eBPFInjector struct {
 	probeObjs *probeObjects
 }
@@ -44,18 +52,64 @@ func RemoveMemlock() {
 	}
 }
 
+func newRedisClient() *redis.Client {
+	addr := os.Getenv("RIVER_REDIS_ADDR")
+	if addr == "" {
+		addr = "localhost:6379"
+	}
+	return redis.NewClient(&redis.Options{Addr: addr})
+}
+
+// ResetRedisSimulation clears previous simulation data, signals, and errors from
+// Redis and records the initial "starting" status for the new simulation run.
+func ResetRedisSimulation(ctx context.Context, mode my_types.Service) error {
+	redisClient := newRedisClient()
+	defer redisClient.Close()
+
+	if err := redisClient.Del(ctx, redisSimulationSetKey, redisSimulationKey, redisSignalsKey, redisStatusKey).Err(); err != nil {
+		log.Printf("Warning: could not clear previous simulation state in Redis: %v", err)
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryRedis, "clear Redis simulation state: %w", err)
+	}
+	return writeRedisStatus(ctx, redisClient, mode, my_types.StatusStarting, my_types.ErrCategoryNone, "Simulation is starting")
+}
+
+// UpdateRedisStatus writes the current simulation status or error to Redis.
+func UpdateRedisStatus(ctx context.Context, mode my_types.Service, status my_types.ServerStatus, category my_types.ErrorCategory, message string) error {
+	redisClient := newRedisClient()
+	defer redisClient.Close()
+	return writeRedisStatus(ctx, redisClient, mode, status, category, message)
+}
+
+func writeRedisStatus(ctx context.Context, redisClient *redis.Client, mode my_types.Service, status my_types.ServerStatus, category my_types.ErrorCategory, message string) error {
+	payload, err := msgpack.Marshal(my_types.SimulationStatus{
+		Status:    status,
+		Mode:      mode.String(),
+		Category:  category,
+		Message:   message,
+		Timestamp: time.Now().Unix(),
+	})
+	if err != nil {
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryRedis, "encode simulation status: %w", err)
+	}
+	if err := redisClient.Set(ctx, redisStatusKey, payload, 0).Err(); err != nil {
+		log.Printf("Warning: failed to store simulation status in Redis: %v", err)
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryRedis, "store simulation status in Redis: %w", err)
+	}
+	return nil
+}
+
 func setCycles(spec *ebpf.CollectionSpec, config my_types.Configuration) error {
 
 	// set ratio
 	ratio, err := strconv.ParseUint(config.MinorToMajorRatio, 10, 64) // base 10
 	if err != nil {
 		log.Printf("Error converting MinorToMinorRatio: %s", err)
-		return err
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryManifest, "invalid minor-to-major ratio %q: %w", config.MinorToMajorRatio, err)
 	}
 	RATIO = uint32(ratio)
 	if err = spec.Variables["MINOR_TO_MAJOR_RATIO"].Set(RATIO); err != nil {
 		log.Printf("Error setting MinorToMajorRation in spec: %s", err)
-		return err
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "set MINOR_TO_MAJOR_RATIO in eBPF spec: %w", err)
 	}
 	log.Printf("Minor_to_major_ratio: %d", RATIO)
 
@@ -63,12 +117,12 @@ func setCycles(spec *ebpf.CollectionSpec, config my_types.Configuration) error {
 	cycles, err := strconv.ParseUint(config.NofCycles, 10, 64) // base 10
 	if err != nil {
 		log.Printf("Error converting Cycles: %s", err)
-		return err
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryManifest, "invalid cycle count %q: %w", config.NofCycles, err)
 	}
 	CYCLES = uint32(cycles)
 	if err = spec.Variables["MAX_CYCLES"].Set(CYCLES); err != nil {
 		log.Printf("Error setting Cycles in spec: %s", err)
-		return err
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "set MAX_CYCLES in eBPF spec: %w", err)
 	}
 	log.Printf("Cycles: %d", CYCLES)
 
@@ -116,19 +170,19 @@ func extractTrajectory(rawTrajectory map[string]interface{}, config my_types.Con
 			vals := make([]uint64, CYCLES)
 			if signalTrajectory, ok := lookupTrajectoryValues(rawTrajectory, signal); ok {
 				if len(signalTrajectory) != int(CYCLES) {
-					return nil, fmt.Errorf("trajectory for %s has %d values; expected %d", key, len(signalTrajectory), CYCLES)
+					return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryTrajectory, "trajectory for %s has %d values; expected %d", key, len(signalTrajectory), CYCLES)
 				}
 				for t, rawVal := range signalTrajectory {
 					val, err := my_types.EncodeSignalValue(rawVal, signal.Type)
 					if err != nil {
 						log.Printf("Cannot convert trajectory value %v for %s: %v", rawVal, key, err)
-						return nil, fmt.Errorf("convert trajectory value for %s: %w", key, err)
+						return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryTrajectory, "convert trajectory value for %s: %w", key, err)
 					}
 					vals[t] = val
 				}
 			} else {
 				log.Printf("Cannot extract raw trajectory for signal %s", key)
-				return nil, errors.New("Trajectory extraction error")
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryTrajectory, "missing trajectory for writable signal %q", key)
 			}
 			trajectory[key] = vals
 		}
@@ -136,23 +190,174 @@ func extractTrajectory(rawTrajectory map[string]interface{}, config my_types.Con
 	return trajectory, nil
 }
 
+func collectConfiguredSignals(config *my_types.Configuration) ([]my_types.Signal, []my_types.Signal, uint32, uint32) {
+	var cReads []my_types.Signal
+	var cWrites []my_types.Signal
+	var nofReads uint32
+	var nofWrites uint32
+	for _, group := range config.Reads {
+		cReads = append(cReads, group.Signals...)
+		nofReads += uint32(len(group.Signals))
+	}
+	for _, group := range config.Writes {
+		cWrites = append(cWrites, group.Signals...)
+		nofWrites += uint32(len(group.Signals))
+	}
+	return cReads, cWrites, nofReads, nofWrites
+}
+
+func setupInnerTrajectoryMaps(
+	spec *ebpf.CollectionSpec,
+	probeObjs *probeObjects,
+	cReads []my_types.Signal,
+	cWrites []my_types.Signal,
+	trajectory map[string][]uint64,
+) (func(), error) {
+	trajectoryMapSpec := spec.Maps["trajectory_map"]
+	trajectoryMap := probeObjs.TrajectoryMap
+	nofReads := len(cReads)
+	totalSignals := nofReads + len(cWrites)
+
+	innerMapKeys := make([]uint32, CYCLES)
+	for p := range innerMapKeys {
+		innerMapKeys[p] = uint32(p)
+	}
+
+	var cleanups []func()
+	cleanupAll := func() {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
+		}
+	}
+
+	for s := 0; s < totalSignals; s++ {
+		innerSpec := trajectoryMapSpec.InnerMap.Copy()
+		innerSpec.MaxEntries = paddedEntries(CYCLES)
+		inner, err := ebpf.NewMap(innerSpec)
+		if err != nil {
+			log.Printf("Cannot create sequence (inner) map: %s", err)
+			cleanupAll()
+			return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "create inner sequence map for signal %d: %w", s, err)
+		}
+		pinPath := "/sys/fs/bpf/sequence_values_" + strconv.FormatInt(int64(s), 10)
+		_ = os.Remove(pinPath)
+		if err := inner.Pin(pinPath); err != nil {
+			log.Printf("Cannot pin inner map at %v", pinPath)
+			inner.Close()
+			cleanupAll()
+			return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "pin inner map at %s: %w", pinPath, err)
+		}
+		cleanups = append(cleanups, func() {
+			if err := inner.Unpin(); err != nil {
+				log.Printf("Cannot unpin inner map, err: %v", err)
+			}
+			log.Printf("Map unpinned from %s", pinPath)
+			inner.Close()
+		})
+
+		if s >= nofReads {
+			sw := s - nofReads
+			sKey := signalKey(cWrites[sw])
+			log.Printf("sName: %v", sKey)
+			_, err = inner.BatchUpdate(innerMapKeys, trajectory[sKey], &ebpf.BatchOptions{
+				Flags: uint64(ebpf.UpdateAny),
+			})
+			if err != nil {
+				log.Printf("Injection of trajectory failed, %v", err)
+				cleanupAll()
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryTrajectory, "inject trajectory for %s: %w", sKey, err)
+			}
+			log.Printf("Input trajectory %d successfully injected", s)
+		}
+
+		key := uint32(s)
+		value := uint32(inner.FD())
+		if err := trajectoryMap.Update(key, value, 0); err != nil {
+			if errno, ok := err.(syscall.Errno); ok {
+				log.Printf("KERNEL ERROR: errno=%d", errno)
+			} else {
+				log.Printf("ERROR: %v", err)
+			}
+			log.Printf("Failed to insert FD for signal %d: %s", s, err)
+			cleanupAll()
+			return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "insert inner map FD for signal %d: %w", s, err)
+		}
+	}
+
+	return cleanupAll, nil
+}
+
+func attachGroupProbes(
+	modelExecutable *link.Executable,
+	groups []my_types.Group,
+	prog *ebpf.Program,
+	targetPID int,
+	startGroupBase int,
+	kind string,
+) ([]link.Link, int, error) {
+	var links []link.Link
+	closeLinks := func() {
+		for _, l := range links {
+			l.Close()
+		}
+	}
+
+	groupBase := startGroupBase
+	for _, group := range groups {
+		cookie := uprobeCookie(groupBase, len(group.Signals))
+		log.Printf("%s group %d, %d signals, cookie: %d", kind, groupBase, len(group.Signals), cookie)
+		offset, err := strconv.ParseUint(group.Offset, 0, 64)
+		if err != nil {
+			closeLinks()
+			log.Printf("Error converting uprobe offset: %s", err)
+			return nil, groupBase, my_types.NewSimulationErrorf(my_types.ErrCategoryManifest, "parse %s uprobe offset %q: %w", kind, group.Offset, err)
+		}
+		options := &link.UprobeOptions{Offset: offset, Cookie: cookie, PID: targetPID}
+		var uprobeLink link.Link
+		if group.Retprobe {
+			uprobeLink, err = modelExecutable.Uretprobe(group.Symbol, prog, options)
+		} else {
+			uprobeLink, err = modelExecutable.Uprobe(group.Symbol, prog, options)
+		}
+		if err != nil {
+			closeLinks()
+			log.Printf("Error setting the %s probe: %v", kind, err)
+			return nil, groupBase, my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "attach %s probe on symbol %q: %w", kind, group.Symbol, err)
+		}
+		log.Printf("%s probe linked", kind)
+		links = append(links, uprobeLink)
+		groupBase += len(group.Signals)
+	}
+	return links, groupBase, nil
+}
+
 func Start(
 	simulationMode my_types.Service,
 	config *my_types.Configuration,
 	rawTrajectory map[string]interface{},
+	readyCh chan<- struct{},
 	errCh chan error,
 	resCh chan my_types.OutputTrace,
 	pertCh <-chan map[string]interface{},
 	statePertCh <-chan []my_types.StateRecord,
 	wg *sync.WaitGroup,
 ) {
+	defer wg.Done()
+
+	var readyOnce sync.Once
+	signalReady := func() {
+		if readyCh != nil {
+			readyOnce.Do(func() {
+				close(readyCh)
+			})
+		}
+	}
 
 	// Load eBPF collection spec
 	spec, err := loadProbe()
 	if err != nil {
 		log.Printf("loading collectionSpec: %s", err)
-		errCh <- errors.New("Simulation failed: cannot retrieve collection spec")
-		wg.Done()
+		errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "cannot retrieve eBPF collection spec: %w", err)
 		return
 	}
 
@@ -162,44 +367,28 @@ func Start(
 	relocation, err := configureRelocation(*config)
 	if err != nil {
 		log.Printf("Cannot configure ASLR-safe target addresses: %v", err)
-		errCh <- err
-		wg.Done()
+		errCh <- my_types.NewSimulationError(my_types.ErrCategoryTarget, err)
 		return
 	}
 
 	// Set cycles in ebpf
-	err = setCycles(spec, *config)
-	if err != nil {
+	if err = setCycles(spec, *config); err != nil {
 		errCh <- err
-		wg.Done()
 		return
 	}
 
 	// Set max entries in eBPF spec, retrieve signals, write desired trajectories
-	var cReads []my_types.Signal
-	var cWrites []my_types.Signal
-	var nof_signals_read uint32
-	var nof_signals_written uint32
-	for _, group := range config.Reads {
-		cReads = append(cReads, group.Signals...)
-		nof_signals_read += uint32(len(group.Signals))
-	}
-	for _, group := range config.Writes {
-		cWrites = append(cWrites, group.Signals...)
-		nof_signals_written += uint32(len(group.Signals))
-	}
+	cReads, cWrites, nof_signals_read, nof_signals_written := collectConfiguredSignals(config)
 
 	log.Printf("nof_signals_read %d, nof_signals_written %d", nof_signals_read, nof_signals_written)
 	if err = spec.Variables["NOF_SIGNALS_READ"].Set(nof_signals_read); err != nil {
-		log.Printf("Error setting variable setting variable NOF_SIGNALS_READ: %v", err)
-		errCh <- err
-		wg.Done()
+		log.Printf("Error setting variable NOF_SIGNALS_READ: %v", err)
+		errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "set NOF_SIGNALS_READ: %w", err)
 		return
 	}
 	if err = spec.Variables["NOF_SIGNALS_WRITTEN"].Set(nof_signals_written); err != nil {
-		log.Printf("Error setting variable setting variable NOF_SIGNALS_WRITTEN: %v", err)
-		errCh <- err
-		wg.Done()
+		log.Printf("Error setting variable NOF_SIGNALS_WRITTEN: %v", err)
+		errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "set NOF_SIGNALS_WRITTEN: %w", err)
 		return
 	}
 
@@ -208,14 +397,20 @@ func Start(
 	// existing map.
 	if err := configureSignalMapSizes(spec, nof_signals_read+nof_signals_written); err != nil {
 		log.Printf("Cannot configure signal map sizes: %v", err)
-		errCh <- err
-		wg.Done()
+		errCh <- my_types.NewSimulationError(my_types.ErrCategoryEBPF, err)
 		return
 	}
 
-	// create the probeObjects
+	// Extract trajectory before creating kernel maps so invalid trajectories fail fast
+	trajectory, err := extractTrajectory(rawTrajectory, *config)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	log.Print("Input trajectory extracted successfully")
+
+	// create the probeObjects and load eBPF objects (maps + programs) into the kernel
 	probeObjs := probeObjects{}
-	// Load eBPF objects (maps + programs) into the kernel
 	if err := spec.LoadAndAssign(&probeObjs, &ebpf.CollectionOptions{
 		Programs: ebpf.ProgramOptions{
 			LogLevel:     1,
@@ -227,8 +422,7 @@ func Start(
 		if errors.As(err, &ve) {
 			log.Printf("Verifier error: %+v", ve)
 		}
-		errCh <- err
-		wg.Done()
+		errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "load eBPF objects into kernel: %w", err)
 		return
 	}
 	defer probeObjs.Close()
@@ -238,107 +432,57 @@ func Start(
 	for index, signal := range append(append([]my_types.Signal{}, cReads...), cWrites...) {
 		info, typeErr := my_types.ParseSignalType(signal.Type)
 		if typeErr != nil {
-			errCh <- fmt.Errorf("signal %q: %w", signal.Name, typeErr)
-			wg.Done()
+			errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryManifest, "signal %q: %w", signal.Name, typeErr)
 			return
 		}
 		if typeErr = probeObjs.SignalTypeMap.Update(uint32(index), uint32(info.Code), 0); typeErr != nil {
-			errCh <- fmt.Errorf("set type for signal %q: %w", signal.Name, typeErr)
-			wg.Done()
+			errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "set type for signal %q: %w", signal.Name, typeErr)
 			return
 		}
 	}
 
-	// Extract trajectory
-	trajectory, err := extractTrajectory(rawTrajectory, *config)
+	cleanupInnerMaps, err := setupInnerTrajectoryMaps(spec, &probeObjs, cReads, cWrites, trajectory)
 	if err != nil {
 		errCh <- err
-		wg.Done()
 		return
 	}
-	log.Print("Input trajectory extracted successfully")
+	defer cleanupInnerMaps()
 
-	// Get the trajectory map and use its spec as the template for inner maps.
-	trajectoryMapSpec := spec.Maps["trajectory_map"]
-	// create outer map
-	trajectoryMap := probeObjs.TrajectoryMap
-	if err != nil {
-		log.Printf("Cannot create trajectory map (outer) map: %s", err)
-		errCh <- err
-		wg.Done()
-		return
-	}
-	// create signal sequences
-	// start preparing a template for the array positions
-	innerMapKeys := make([]uint32, CYCLES)
-	for p, _ := range innerMapKeys {
-		innerMapKeys[p] = uint32(p)
-	}
-	for s := 0; s < int(nof_signals_read+nof_signals_written); s++ {
-		// refine and clone the inner map spec to avoid reuse
-		innerSpec := trajectoryMapSpec.InnerMap.Copy()
-		innerSpec.MaxEntries = paddedEntries(CYCLES)
-		inner, err := ebpf.NewMap(innerSpec)
-		if err != nil {
-			log.Printf("Cannot create sequence (inner) map: %s", err)
-			errCh <- err
-			wg.Done()
+	// Pin perturbation ring buffers prior to signalling readiness so immediate
+	// perturbation injections cannot race with buffer pinning.
+	switch simulationMode {
+	case my_types.StatePerturbation:
+		pertRBPath := "/sys/fs/bpf/state_pertbuf"
+		_ = os.Remove(pertRBPath)
+		if err := probeObjs.StateRb.Pin(pertRBPath); err != nil {
+			log.Printf("Cannot pin state perturbation buffer at %v", pertRBPath)
+			errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "pin state perturbation ring buffer at %s: %w", pertRBPath, err)
 			return
 		}
-		// pin the inner map
-		pinPath := "/sys/fs/bpf/sequence_values_" + strconv.FormatInt(int64(s), 10)
-		if err := inner.Pin(pinPath); err != nil {
-			log.Printf("Cannot pin inner map at %v", pinPath)
-			errCh <- err
-			wg.Done()
-			return
-		}
-		// inject the trajectory
-		if s >= int(nof_signals_read) { // only for signals to write
-			sw := int(s - int(nof_signals_read))
-			sKey := signalKey(cWrites[sw])
-			log.Printf("sName: %v", sKey)
-			// set the trajectory with a batch update
-			_, err = inner.BatchUpdate(innerMapKeys, trajectory[sKey], &ebpf.BatchOptions{
-				Flags: uint64(ebpf.UpdateAny),
-			})
-			if err != nil {
-				log.Printf("Injection of trajectory failed, %v", err)
-				errCh <- errors.New("Trajectory injection failure")
-				wg.Done()
-				return
-			}
-			log.Printf("Input trajectory %d successfully injected", s)
-		}
-		// insert single sequence array into trajectory map
-		key := uint32(s)
-		fd := inner.FD()
-		value := uint32(fd)
-		if err := trajectoryMap.Update(key, value, 0); err != nil {
-			if errno, ok := err.(syscall.Errno); ok {
-				log.Printf("KERNEL ERROR: errno=%d", errno)
-			} else {
-				log.Printf("ERROR: %v", err)
-			}
-			log.Printf("Failed to insert FD for signal %d: %s", s, err)
-			errCh <- err
-			wg.Done()
-			return
-		}
-		// defer inner map unpinning
 		defer func() {
-			if err := inner.Unpin(); err != nil {
-				log.Printf("Cannot unpin inner map, err: %v", err)
+			if err := probeObjs.StateRb.Unpin(); err != nil {
+				log.Printf("Cannot unpin state perturbation buffer: %v", err)
 			}
-			log.Printf("Map unpinned from %s", pinPath)
 		}()
-		defer inner.Close()
+	case my_types.SignalPerturbation:
+		pertRBPath := "/sys/fs/bpf/pertbuf"
+		_ = os.Remove(pertRBPath)
+		if err := probeObjs.InjRb.Pin(pertRBPath); err != nil {
+			log.Printf("Cannot pin perturbation buffer at %v", pertRBPath)
+			errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "pin signal perturbation ring buffer at %s: %w", pertRBPath, err)
+			return
+		}
+		defer func() {
+			if err := probeObjs.InjRb.Unpin(); err != nil {
+				log.Printf("Cannot unpin perturbation buffer: %v", err)
+			}
+		}()
 	}
+
 	modelExecutable, err := link.OpenExecutable(config.ModelPath)
 	if err != nil {
 		log.Printf("Error opening model executable: %s", err)
-		errCh <- err
-		wg.Done()
+		errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryTarget, "open model executable %q: %w", config.ModelPath, err)
 		return
 	}
 
@@ -362,95 +506,49 @@ func Start(
 	}()
 	if err := startStopped(binCmd); err != nil {
 		log.Printf("Failed to start simulation command: %s", err)
-		errCh <- err
-		wg.Done()
+		errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryTarget, "start target binary %q: %w", config.ModelPath, err)
 		return
 	}
 	runtimeAddresses, loadBias, err := relocation.runtimeAddresses(binCmd.Process.Pid)
 	if err != nil {
 		_ = abortStopped(binCmd)
 		log.Printf("Cannot resolve target runtime addresses: %s", err)
-		errCh <- err
-		wg.Done()
+		errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryTarget, "resolve target runtime addresses: %w", err)
 		return
 	}
 	for p, runtimeAddress := range runtimeAddresses {
 		if err = probeObjs.AddressMap.Update(uint32(p), runtimeAddress, 0); err != nil {
 			_ = abortStopped(binCmd)
 			log.Printf("Cannot update runtime address for signal %d: %v", p, err)
-			errCh <- err
-			wg.Done()
+			errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "update runtime address for signal %d: %w", p, err)
 			return
 		}
 	}
 
-	// Attach the uprobes only to this target while it is still stopped. The
-	// address map above contains addresses relocated for this specific process,
-	// so allowing another instance of the executable to trigger these programs
-	// would make the programs dereference addresses from the wrong address space.
+	// Attach the uprobes only to this target while it is still stopped.
 	targetPID := binCmd.Process.Pid
-	var offset uint64
-	var group_base int
+	var groupBase int
 	if nof_signals_read > 0 {
-		for _, group := range config.Reads {
-			cookie := uprobeCookie(group_base, len(group.Signals))
-			log.Printf("Read group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
-			offset, err = strconv.ParseUint(group.Offset, 0, 64)
-			if err != nil {
-				_ = abortStopped(binCmd)
-				log.Printf("Error converting uprobe offset: %s", err)
-				errCh <- err
-				wg.Done()
-				return
-			}
-			options := &link.UprobeOptions{Offset: offset, Cookie: cookie, PID: targetPID}
-			var uprobeR link.Link
-			if group.Retprobe {
-				uprobeR, err = modelExecutable.Uretprobe(group.Symbol, probeObjs.UprobeRead, options)
-			} else {
-				uprobeR, err = modelExecutable.Uprobe(group.Symbol, probeObjs.UprobeRead, options)
-			}
-			if err != nil {
-				_ = abortStopped(binCmd)
-				log.Printf("Error setting the read probe: %v", err)
-				errCh <- err
-				wg.Done()
-				return
-			}
-			log.Print("Read probe linked")
-			defer uprobeR.Close()
-			group_base += len(group.Signals)
+		readLinks, nextBase, attachErr := attachGroupProbes(modelExecutable, config.Reads, probeObjs.UprobeRead, targetPID, groupBase, "Read")
+		if attachErr != nil {
+			_ = abortStopped(binCmd)
+			errCh <- attachErr
+			return
 		}
+		for _, l := range readLinks {
+			defer l.Close()
+		}
+		groupBase = nextBase
 	}
 	if nof_signals_written > 0 {
-		for _, group := range config.Writes {
-			cookie := uprobeCookie(group_base, len(group.Signals))
-			log.Printf("Written group %d, %d signals, cookie: %d", group_base, len(group.Signals), cookie)
-			offset, err = strconv.ParseUint(group.Offset, 0, 64)
-			if err != nil {
-				_ = abortStopped(binCmd)
-				log.Printf("Error converting uprobe offset: %s", err)
-				errCh <- err
-				wg.Done()
-				return
-			}
-			options := &link.UprobeOptions{Offset: offset, Cookie: cookie, PID: targetPID}
-			var uprobeW link.Link
-			if group.Retprobe {
-				uprobeW, err = modelExecutable.Uretprobe(group.Symbol, probeObjs.UprobeWrite, options)
-			} else {
-				uprobeW, err = modelExecutable.Uprobe(group.Symbol, probeObjs.UprobeWrite, options)
-			}
-			if err != nil {
-				_ = abortStopped(binCmd)
-				log.Printf("Error setting the write probe: %v", err)
-				errCh <- err
-				wg.Done()
-				return
-			}
-			log.Print("Write probe linked")
-			defer uprobeW.Close()
-			group_base += len(group.Signals)
+		writeLinks, _, attachErr := attachGroupProbes(modelExecutable, config.Writes, probeObjs.UprobeWrite, targetPID, groupBase, "Write")
+		if attachErr != nil {
+			_ = abortStopped(binCmd)
+			errCh <- attachErr
+			return
+		}
+		for _, l := range writeLinks {
+			defer l.Close()
 		}
 	}
 
@@ -462,8 +560,7 @@ func Start(
 	if err != nil {
 		_ = abortStopped(binCmd)
 		log.Printf("Error setting the uprobe_timer: %v", err)
-		errCh <- err
-		wg.Done()
+		errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "attach timer uprobe on %q: %w", config.TimerSymbol, err)
 		return
 	}
 	defer uprobe_timer.Close()
@@ -474,22 +571,25 @@ func Start(
 	if detachErr != nil {
 		_ = abortStopped(binCmd)
 		log.Printf("Cannot detach from target after address setup: %s", detachErr)
-		errCh <- detachErr
-		wg.Done()
+		errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryTarget, "detach target process: %w", detachErr)
 		return
 	}
+
+	// Notify the server that all probes are attached and the target is running.
+	signalReady()
+
 	// Start measuring only once the untraced model can execute.
 	simulationStartTime := time.Now()
+	defer func() {
+		stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
+	}()
 
 	// wait for non-interactive simulations to terminate
 	if simulationMode == my_types.Falsification {
-		// wait until simulation terminates
 		if err := binCmd.Wait(); err != nil {
 			if !cmdWasSigkilled(err) {
 				log.Printf("Simulation finished with error: %s", err)
-				errCh <- err
-				wg.Done()
-				stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
+				errCh <- my_types.NewSimulationErrorf(my_types.ErrCategoryTarget, "target process exited with error: %w", err)
 				return
 			}
 		} else {
@@ -515,259 +615,262 @@ func Start(
 
 	switch simulationMode {
 	case my_types.Monitoring:
-		ctx := context.Background()
 		if err := monitorSimulation(ctx, probeObjs, nof_signals_read, cReads, simulationDone, cancelSimulation); err != nil {
 			errCh <- err
-			wg.Done()
-			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 			return
 		}
 	case my_types.Falsification:
-		var outSignals my_types.OutputTrace
-		for id, signal := range cReads {
-			var signTrace my_types.Trace
-			signTrace.SignName = signal.Name
-			signTrace.Type = signal.Type
-			var signalKey uint32 = uint32(id)
-			// get the trace from the eBPF map
-			pinPath := "/sys/fs/bpf/sequence_values_" + strconv.FormatInt(int64(signalKey), 10)
-			innerTrace, err := ebpf.LoadPinnedMap(pinPath, nil)
-			if err != nil {
-				log.Printf("Cannot recover inner pinned map at %s: %v", pinPath, err)
-				errCh <- err
-				wg.Done()
-				return
-			}
-			defer innerTrace.Close()
-			// trace extraction
-			values := make([]any, CYCLES)
-			for pos := uint32(0); pos < CYCLES; pos++ {
-				var bits uint64
-				err := innerTrace.Lookup(&pos, &bits)
-				if err != nil {
-					log.Printf("Trace lookup failed: %s\n", err)
-					errCh <- err
-					wg.Done()
-					stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
-					return
-				}
-				value, decodeErr := my_types.DecodeSignalValue(bits, signal.Type)
-				if decodeErr != nil {
-					errCh <- decodeErr
-					wg.Done()
-					return
-				}
-				values[pos] = value
-			}
-			signTrace.Values = values
-			//log.Printf("values %v", values)
-			outSignals.Signals = append(outSignals.Signals, signTrace)
+		outSignals, err := collectFalsificationTrace(cReads)
+		if err != nil {
+			errCh <- err
+			return
 		}
 		resCh <- outSignals
 	case my_types.StatePerturbation:
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		wgm := &sync.WaitGroup{}
-		wgm.Add(1)
-		errChm := make(chan error, 1)
-		defer close(errChm)
-		errChi := make(chan error, 1)
-		defer close(errChi)
-		// pin the user space ringbuf
-		pertRBPath := "/sys/fs/bpf/state_pertbuf"
-		if err := probeObjs.StateRb.Pin(pertRBPath); err != nil {
-			log.Printf("Cannot pin state perturbation buffer at %v", pertRBPath)
+		if err := runStatePerturbation(ctx, cancelSimulation, statePertCh, probeObjs, relocation, loadBias, nof_signals_read, cReads, simulationDone); err != nil {
 			errCh <- err
-			wg.Done()
-			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 			return
 		}
-		// defer unpinnning
-		defer func() {
-			if err := probeObjs.StateRb.Unpin(); err != nil {
-				log.Printf("Cannot unpin state perturbation buffer: %v", err)
-			}
-		}()
-
-		// apply state perturbation
-		go func(ctx context.Context, statePertCh <-chan []my_types.StateRecord, probeObjs probeObjects, errCh chan error, loadBias uint64) {
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case perturbation, ok := <-statePertCh:
-					if !ok {
-						break // the simulation is still running but the channel was closed
-					}
-					// write records to a temp file
-					tempFile, err := os.CreateTemp("", "model_state_records_*.bin")
-					if err != nil {
-						log.Printf("Cannot create temporary inject file for state records: %v", err)
-						break
-					}
-					defer tempFile.Close()
-					for _, r := range perturbation {
-						info, valueErr := my_types.ParseSignalType(r.Type)
-						if valueErr != nil || r.ValueSize != info.Size {
-							log.Printf("Invalid state perturbation type/size for %#x", r.Addr)
-							break
-						}
-						if err := relocation.image.validateDataRange(r.Addr, uint64(r.ValueSize), true); err != nil {
-							log.Printf("Invalid state perturbation address range: %v", err)
-							break
-						}
-						runtimeAddress, ok := addUint64(r.Addr, loadBias)
-						if !ok {
-							log.Printf("State perturbation address %#x overflows after relocation", r.Addr)
-							break
-						}
-						bits, valueErr := my_types.EncodeSignalValue(r.Value, r.Type)
-						if valueErr != nil {
-							log.Printf("Invalid state perturbation value: %v", valueErr)
-							break
-						}
-						binary.Write(tempFile, binary.LittleEndian, r.Time)
-						binary.Write(tempFile, binary.LittleEndian, r.ValueSize)
-						binary.Write(tempFile, binary.LittleEndian, runtimeAddress)
-						binary.Write(tempFile, binary.LittleEndian, bits)
-					}
-
-					// call the injector
-					enableInjectorVerbosity := "0"
-					if VERBOSE {
-						enableInjectorVerbosity = "1"
-					}
-					injCmd := exec.Command(
-						"sudo",
-						"./simulator/state_injector",
-						tempFile.Name(),
-						enableInjectorVerbosity,
-					)
-					injCmd.Stdout = os.Stdout
-					injCmd.Stderr = os.Stderr
-					if err = injCmd.Run(); err != nil {
-						log.Printf("Injector cmd failed: %v", err)
-						break
-					}
-				}
-
-			}
-		}(ctx, statePertCh, probeObjs, errChi, loadBias)
-
-		// monitor simulation
-		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read, cReads, simulationDone, cancelSimulation)
-
-		// wait for simulation to terminate
-		wgm.Wait()
-		// return the error if occured, otherwise send simulation task terminated
-		if err := <-errChm; err != nil {
-			errCh <- err
-		} else {
-			wg.Done()
-		}
-		stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
-		return
-
 	case my_types.SignalPerturbation:
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		wgm := &sync.WaitGroup{}
-		wgm.Add(1)
-		errChm := make(chan error, 1)
-		defer close(errChm)
-		errChi := make(chan error, 1)
-		defer close(errChi)
-		// pin the user space ringbuf
-		pertRBPath := "/sys/fs/bpf/pertbuf"
-		if err := probeObjs.InjRb.Pin(pertRBPath); err != nil {
-			log.Printf("Cannot pin perturbation buffer at %v", pertRBPath)
+		if err := runSignalPerturbation(ctx, cancelSimulation, pertCh, probeObjs, nof_signals_read, nof_signals_written, cReads, cWrites, simulationDone); err != nil {
 			errCh <- err
-			wg.Done()
-			stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
 			return
 		}
-		// defer unpinnning
-		defer func() {
-			if err := probeObjs.InjRb.Unpin(); err != nil {
-				log.Printf("Cannot unpin perturbation buffer: %v", err)
-			}
-		}()
+	}
+}
 
-		// apply signal perturbation
-		go func(ctx context.Context, pertCh <-chan map[string]interface{}, probeObjs probeObjects, errCh chan error, nof_signals_written uint32) {
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case perturbation, ok := <-pertCh:
-					if !ok {
-						break // the simulation is still running but the channel was closed
-					}
-					// extract perturbation records
-					pertRecords, err := extractPerturbationRecords(perturbation, nof_signals_written, cWrites)
-					if err != nil {
-						log.Printf("Error converting perturbation into model input records: %v", err)
-					}
-					// write records to a temp file (todo: improve)
-					tempFile, err := os.CreateTemp("", "model_records_*.bin")
-					if err != nil {
-						log.Printf("Cannot create temporary inject file: %v", err)
-						break
-					}
-					defer tempFile.Close()
-					for _, r := range pertRecords {
-						binary.Write(tempFile, binary.LittleEndian, r.Time)
-						binary.Write(tempFile, binary.LittleEndian, r.Filler)
-						for _, v := range r.Values {
-							binary.Write(tempFile, binary.LittleEndian, v)
-						}
-
-					}
-
-					// call the injector
-					enableInjectorVerbosity := "0"
-					if VERBOSE {
-						enableInjectorVerbosity = "1"
-					}
-					injCmd := exec.Command(
-						"sudo",
-						"./simulator/injector",
-						strconv.FormatInt(int64(nof_signals_written), 10),
-						tempFile.Name(),
-						enableInjectorVerbosity,
-					)
-					injCmd.Stdout = os.Stdout
-					injCmd.Stderr = os.Stderr
-					if err = injCmd.Run(); err != nil {
-						log.Printf("Injector cmd failed: %v", err)
-						break
-					}
-				}
-
-			}
-		}(ctx, pertCh, probeObjs, errChi, nof_signals_written)
-		// monitor simulation
-		go asyncMonitorSimulation(wgm, errChm, ctx, probeObjs, nof_signals_read, cReads, simulationDone, cancelSimulation)
-
-		// wait for simulation to terminate
-		wgm.Wait()
-		// return the error if occured, otherwise send simulation task terminated
-		if err := <-errChm; err != nil {
-			errCh <- err
-		} else {
-			wg.Done()
+func collectFalsificationTrace(cReads []my_types.Signal) (my_types.OutputTrace, error) {
+	var outSignals my_types.OutputTrace
+	for id, signal := range cReads {
+		var signTrace my_types.Trace
+		signTrace.SignName = signal.Name
+		signTrace.Type = signal.Type
+		signalKey := uint32(id)
+		pinPath := "/sys/fs/bpf/sequence_values_" + strconv.FormatInt(int64(signalKey), 10)
+		innerTrace, err := ebpf.LoadPinnedMap(pinPath, nil)
+		if err != nil {
+			log.Printf("Cannot recover inner pinned map at %s: %v", pinPath, err)
+			return outSignals, my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "load pinned trace map at %s: %w", pinPath, err)
 		}
+		defer innerTrace.Close()
 
-		stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
-		return
+		values := make([]any, CYCLES)
+		for pos := uint32(0); pos < CYCLES; pos++ {
+			var bits uint64
+			err := innerTrace.Lookup(&pos, &bits)
+			if err != nil {
+				log.Printf("Trace lookup failed: %s\n", err)
+				return outSignals, my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "lookup trace sample %d for %s: %w", pos, signal.Name, err)
+			}
+			value, decodeErr := my_types.DecodeSignalValue(bits, signal.Type)
+			if decodeErr != nil {
+				return outSignals, my_types.NewSimulationErrorf(my_types.ErrCategoryTrajectory, "decode trace value for %s: %w", signal.Name, decodeErr)
+			}
+			values[pos] = value
+		}
+		signTrace.Values = values
+		outSignals.Signals = append(outSignals.Signals, signTrace)
+	}
+	return outSignals, nil
+}
+
+func runStatePerturbation(
+	parentCtx context.Context,
+	cancelSimulation context.CancelFunc,
+	statePertCh <-chan []my_types.StateRecord,
+	probeObjs probeObjects,
+	relocation *relocationConfig,
+	loadBias uint64,
+	nofSignalsRead uint32,
+	cReads []my_types.Signal,
+	simulationDone <-chan error,
+) error {
+	ctx, cancel := context.WithCancel(parentCtx)
+	defer cancel()
+
+	errChm := make(chan error, 1)
+	errChi := make(chan error, 1)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case perturbation, ok := <-statePertCh:
+				if !ok {
+					return
+				}
+				if err := injectStatePerturbationBatch(perturbation, relocation, loadBias); err != nil {
+					log.Printf("State perturbation injection failed: %v", err)
+					select {
+					case errChi <- err:
+					default:
+					}
+					cancelSimulation()
+					return
+				}
+			}
+		}
+	}()
+
+	go func() {
+		errChm <- monitorSimulation(ctx, probeObjs, nofSignalsRead, cReads, simulationDone, cancelSimulation)
+	}()
+
+	monitorErr := <-errChm
+	select {
+	case injErr := <-errChi:
+		return injErr
+	default:
+		return monitorErr
+	}
+}
+
+func injectStatePerturbationBatch(perturbation []my_types.StateRecord, relocation *relocationConfig, loadBias uint64) error {
+	tempFile, err := os.CreateTemp("", "model_state_records_*.bin")
+	if err != nil {
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "create temporary state perturbation file: %w", err)
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+	defer tempFile.Close()
+
+	for _, r := range perturbation {
+		info, valueErr := my_types.ParseSignalType(r.Type)
+		if valueErr != nil || r.ValueSize != info.Size {
+			return my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "invalid state perturbation type/size for %#x", r.Addr)
+		}
+		if err := relocation.image.validateDataRange(r.Addr, uint64(r.ValueSize), true); err != nil {
+			return my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "invalid state perturbation address range: %w", err)
+		}
+		runtimeAddress, ok := addUint64(r.Addr, loadBias)
+		if !ok {
+			return my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation address %#x overflows after relocation", r.Addr)
+		}
+		bits, valueErr := my_types.EncodeSignalValue(r.Value, r.Type)
+		if valueErr != nil {
+			return my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "invalid state perturbation value: %w", valueErr)
+		}
+		_ = binary.Write(tempFile, binary.LittleEndian, r.Time)
+		_ = binary.Write(tempFile, binary.LittleEndian, r.ValueSize)
+		_ = binary.Write(tempFile, binary.LittleEndian, runtimeAddress)
+		_ = binary.Write(tempFile, binary.LittleEndian, bits)
+	}
+	if err := tempFile.Close(); err != nil {
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "flush temporary state perturbation file: %w", err)
 	}
 
-	// terminate
-	wg.Done()
-	stopSimulator(simulationStartTime, nof_signals_read, nof_signals_written, *config)
-	return
+	enableInjectorVerbosity := "0"
+	if VERBOSE {
+		enableInjectorVerbosity = "1"
+	}
+	injCmd := exec.Command(
+		"sudo",
+		"./simulator/state_injector",
+		tempPath,
+		enableInjectorVerbosity,
+	)
+	injCmd.Stdout = os.Stdout
+	injCmd.Stderr = os.Stderr
+	if err = injCmd.Run(); err != nil {
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state_injector command failed: %w", err)
+	}
+	return nil
+}
+
+func runSignalPerturbation(
+	parentCtx context.Context,
+	cancelSimulation context.CancelFunc,
+	pertCh <-chan map[string]interface{},
+	probeObjs probeObjects,
+	nofSignalsRead uint32,
+	nofSignalsWritten uint32,
+	cReads []my_types.Signal,
+	cWrites []my_types.Signal,
+	simulationDone <-chan error,
+) error {
+	ctx, cancel := context.WithCancel(parentCtx)
+	defer cancel()
+
+	errChm := make(chan error, 1)
+	errChi := make(chan error, 1)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case perturbation, ok := <-pertCh:
+				if !ok {
+					return
+				}
+				if err := injectSignalPerturbationBatch(perturbation, nofSignalsWritten, cWrites); err != nil {
+					log.Printf("Signal perturbation injection failed: %v", err)
+					select {
+					case errChi <- err:
+					default:
+					}
+					cancelSimulation()
+					return
+				}
+			}
+		}
+	}()
+
+	go func() {
+		errChm <- monitorSimulation(ctx, probeObjs, nofSignalsRead, cReads, simulationDone, cancelSimulation)
+	}()
+
+	monitorErr := <-errChm
+	select {
+	case injErr := <-errChi:
+		return injErr
+	default:
+		return monitorErr
+	}
+}
+
+func injectSignalPerturbationBatch(perturbation map[string]interface{}, nofSignalsWritten uint32, cWrites []my_types.Signal) error {
+	pertRecords, err := extractPerturbationRecords(perturbation, nofSignalsWritten, cWrites)
+	if err != nil {
+		return my_types.NewSimulationError(my_types.ErrCategoryPerturbation, err)
+	}
+	tempFile, err := os.CreateTemp("", "model_records_*.bin")
+	if err != nil {
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "create temporary signal perturbation file: %w", err)
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+	defer tempFile.Close()
+
+	for _, r := range pertRecords {
+		_ = binary.Write(tempFile, binary.LittleEndian, r.Time)
+		_ = binary.Write(tempFile, binary.LittleEndian, r.Filler)
+		for _, v := range r.Values {
+			_ = binary.Write(tempFile, binary.LittleEndian, v)
+		}
+	}
+	if err := tempFile.Close(); err != nil {
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "flush temporary signal perturbation file: %w", err)
+	}
+
+	enableInjectorVerbosity := "0"
+	if VERBOSE {
+		enableInjectorVerbosity = "1"
+	}
+	injCmd := exec.Command(
+		"sudo",
+		"./simulator/injector",
+		strconv.FormatInt(int64(nofSignalsWritten), 10),
+		tempPath,
+		enableInjectorVerbosity,
+	)
+	injCmd.Stdout = os.Stdout
+	injCmd.Stderr = os.Stderr
+	if err = injCmd.Run(); err != nil {
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "injector command failed: %w", err)
+	}
+	return nil
 }
 
 func stopSimulator(simulationStartTime time.Time, nof_signals_read, nof_signals_written uint32, config my_types.Configuration) {
@@ -845,13 +948,13 @@ func extractPerturbationRecords(data map[string]interface{}, nof_signals_written
 			var val uint32
 			val, ok := customConversion(rawVal)
 			if !ok {
-				return nil, errors.New("Cannot convert perturbation time value to integer")
+				return nil, errors.New("cannot convert perturbation time value to integer")
 			}
 			timeVals = append(timeVals, val)
 		}
 	} else {
 		log.Print("Cannot extract raw values for time")
-		return nil, errors.New("Perturbation extraction error")
+		return nil, errors.New("perturbation extraction error: missing time array")
 	}
 	signalVals := make(map[string][]uint64)
 	// extract signals
@@ -878,7 +981,7 @@ func extractPerturbationRecords(data map[string]interface{}, nof_signals_written
 			signalVals[signalKey(configured)] = vals
 		} else {
 			log.Printf("Cannot extract raw values for %v", signal)
-			return nil, errors.New("Perturbation extraction error")
+			return nil, fmt.Errorf("perturbation %q values must be an array", signal)
 		}
 	}
 	// pack into model records and return
@@ -901,25 +1004,15 @@ func extractPerturbationRecords(data map[string]interface{}, nof_signals_written
 	return pertRecords, nil
 }
 
-func asyncMonitorSimulation(wg *sync.WaitGroup, errCh chan<- error, ctx context.Context, probeObjs probeObjects, nof_signals_read uint32, signals []my_types.Signal, simulationDone <-chan error, stopSimulation context.CancelFunc) {
-
-	defer wg.Done()
-	err := monitorSimulation(ctx, probeObjs, nof_signals_read, signals, simulationDone, stopSimulation)
-	errCh <- err
-}
-
 func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_read uint32, signals []my_types.Signal, simulationDone <-chan error, stopSimulation context.CancelFunc) error {
 
 	// Create the Redis client
-	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	redisClient := newRedisClient()
 	defer redisClient.Close()
-	// Get the simulation id
-	simulationId := strconv.Itoa(0) // todo fix
-	simulationKey := "simulation:" + simulationId
-	// Add a new Redis set fot the current run
-	if err := redisClient.SAdd(ctx, "simulation", simulationId).Err(); err != nil {
+	// Add a new Redis set for the current run
+	if err := redisClient.SAdd(ctx, redisSimulationSetKey, redisSimulationID).Err(); err != nil {
 		log.Print("Failed to add simulation set to Redis:", err)
-		return errors.New("Error adding new simulation set to Redis")
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryRedis, "add simulation set to Redis: %w", err)
 	}
 	signalNames := make([]string, len(signals))
 	for i, sig := range signals {
@@ -927,17 +1020,17 @@ func monitorSimulation(ctx context.Context, probeObjs probeObjects, nof_signals_
 	}
 	signalsPayload, err := msgpack.Marshal(signalNames)
 	if err != nil {
-		return fmt.Errorf("encode simulation signal names: %w", err)
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryRedis, "encode simulation signal names: %w", err)
 	}
-	if err := redisClient.Set(ctx, simulationKey+":signals", signalsPayload, 0).Err(); err != nil {
+	if err := redisClient.Set(ctx, redisSignalsKey, signalsPayload, 0).Err(); err != nil {
 		log.Print("Failed to store simulation signal names in Redis:", err)
-		return errors.New("Error storing simulation signal names in Redis")
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryRedis, "store simulation signal names in Redis: %w", err)
 	}
 	// Create a ring buffer reader
 	rbReader, err := ringbuf.NewReader(probeObjs.OutRb)
 	if err != nil {
 		log.Printf("Failed to create ring buffer reader: %v", err)
-		return errors.New("Error creating the ring buffer reader")
+		return my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "create ring buffer reader: %w", err)
 	}
 	defer rbReader.Close()
 	// Read events from the ring buffer and write them to Redis
@@ -959,7 +1052,7 @@ monitorLoop:
 			}
 			// convert to a structured record
 			_vals := make([]uint64, nof_signals_read)
-			for p, _ := range _vals {
+			for p := range _vals {
 				_vals[p] = binary.LittleEndian.Uint64(raw[8+p*8 : 16+p*8])
 			}
 			oRec := my_types.ModelRecord{
@@ -974,7 +1067,7 @@ monitorLoop:
 			}
 		} else {
 			if !errors.Is(err, os.ErrDeadlineExceeded) {
-				return fmt.Errorf("read simulation ring buffer: %w", err)
+				return my_types.NewSimulationErrorf(my_types.ErrCategoryEBPF, "read simulation ring buffer: %w", err)
 			}
 			receivedRecords := writtenRecords + uint32(len(records))
 			if receivedRecords >= CYCLES {
@@ -983,9 +1076,9 @@ monitorLoop:
 			select {
 			case waitErr := <-simulationDone:
 				if waitErr != nil {
-					completionErr = fmt.Errorf("simulation exited before monitoring completed: %w", waitErr)
+					completionErr = my_types.NewSimulationErrorf(my_types.ErrCategoryTarget, "simulation exited before monitoring completed: %w", waitErr)
 				} else {
-					completionErr = fmt.Errorf("simulation produced %d of %d expected records", receivedRecords, CYCLES)
+					completionErr = my_types.NewSimulationErrorf(my_types.ErrCategoryTarget, "simulation produced %d of %d expected records", receivedRecords, CYCLES)
 				}
 				break monitorLoop
 			default:
@@ -993,8 +1086,8 @@ monitorLoop:
 		}
 		shouldFlush := len(records) >= 50 || (len(records) > 0 && (errors.Is(err, os.ErrDeadlineExceeded) || time.Since(lastFlush) >= 50*time.Millisecond))
 		if shouldFlush {
-			if err = writeToRedis(ctx, redisClient, simulationKey, records, signals); err != nil {
-				return errors.New("Error writing records to Redis")
+			if err = writeToRedis(ctx, redisClient, redisSimulationKey, records, signals); err != nil {
+				return my_types.NewSimulationErrorf(my_types.ErrCategoryRedis, "write records to Redis: %w", err)
 			}
 			// Empty local record slice
 			writtenRecords += uint32(len(records))
@@ -1004,8 +1097,8 @@ monitorLoop:
 	}
 	if len(records) != 0 {
 		// Flush last records
-		if err = writeToRedis(ctx, redisClient, simulationKey, records, signals); err != nil {
-			return errors.New("Error writing records to Redis")
+		if err = writeToRedis(ctx, redisClient, redisSimulationKey, records, signals); err != nil {
+			return my_types.NewSimulationErrorf(my_types.ErrCategoryRedis, "write records to Redis: %w", err)
 		}
 		// Empty local record slice
 		writtenRecords += uint32(len(records))

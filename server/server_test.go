@@ -172,3 +172,40 @@ func TestDeserializeSignalPerturbationPathAndNameLookup(t *testing.T) {
 		t.Fatalf("expected unknown writable signal error, got %v", err)
 	}
 }
+
+func TestPrepareRequestErrorCategorization(t *testing.T) {
+	// 1. Malformed msgpack -> request_error
+	_, _, err := prepareRequest([]byte{0xff, 0x00})
+	if cat, _ := my_types.CategorizeError(err, my_types.ErrCategoryNone); cat != my_types.ErrCategoryRequest {
+		t.Fatalf("expected request_error, got %q (%v)", cat, err)
+	}
+
+	// 2. Invalid YAML manifest -> manifest_error
+	rawBadYAML, _ := msgpack.Marshal(map[string]any{
+		"manifest":   ":::not valid yaml:::",
+		"trajectory": map[string]any{},
+	})
+	_, _, err = prepareRequest(rawBadYAML)
+	if cat, _ := my_types.CategorizeError(err, my_types.ErrCategoryNone); cat != my_types.ErrCategoryManifest {
+		t.Fatalf("expected manifest_error, got %q (%v)", cat, err)
+	}
+}
+
+func TestSerializeAndDecodeServerResponse(t *testing.T) {
+	expected := my_types.ServerResponse{
+		Status:   my_types.StatusError,
+		Category: my_types.ErrCategoryTrajectory,
+		Message:  "trajectory for x has 10 values; expected 800",
+	}
+	buf, err := serializeResponse(expected)
+	if err != nil {
+		t.Fatalf("unexpected serialize error: %v", err)
+	}
+	var decoded my_types.ServerResponse
+	if err := msgpack.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+	if decoded.Status != expected.Status || decoded.Category != expected.Category || decoded.Message != expected.Message {
+		t.Fatalf("decoded response mismatch: got %#v, want %#v", decoded, expected)
+	}
+}

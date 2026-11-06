@@ -141,24 +141,24 @@ func prepareRequest(rawData []byte) (map[string]interface{}, *my_types.Configura
 		Trajectory map[string]interface{} `msgpack:"trajectory"`
 	}
 	if err := msgpack.Unmarshal(rawData, &request); err != nil {
-		return nil, nil, fmt.Errorf("decode simulation request: %w", err)
+		return nil, nil, my_types.NewSimulationErrorf(my_types.ErrCategoryRequest, "decode simulation request: %w", err)
 	}
 	if request.Manifest == "" || request.Trajectory == nil {
-		return nil, nil, fmt.Errorf("simulation request requires manifest YAML and a trajectory map")
+		return nil, nil, my_types.NewSimulationErrorf(my_types.ErrCategoryRequest, "simulation request requires manifest YAML and a trajectory map")
 	}
 	var m manifest.Manifest
 	if err := yaml.Unmarshal([]byte(request.Manifest), &m); err != nil {
-		return nil, nil, fmt.Errorf("parse manifest: %w", err)
+		return nil, nil, my_types.NewSimulationErrorf(my_types.ErrCategoryManifest, "parse manifest: %w", err)
 	}
 	config, err := manifest.CompileConfiguration(&m)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, my_types.NewSimulationError(my_types.ErrCategoryManifest, err)
 	}
 	sanitizedTrajectory := make(map[string]interface{}, len(request.Trajectory))
 	for key, values := range request.Trajectory {
 		cleanKey, keyErr := sanitizeCatalogPath(key)
 		if keyErr != nil {
-			return nil, nil, fmt.Errorf("trajectory key: %w", keyErr)
+			return nil, nil, my_types.NewSimulationErrorf(my_types.ErrCategoryTrajectory, "trajectory key: %w", keyErr)
 		}
 		sanitizedTrajectory[cleanKey] = values
 	}
@@ -192,62 +192,62 @@ func deserializeState(rawData []byte, config *my_types.Configuration) ([]my_type
 	err := dec.Decode(&data)
 	if err != nil {
 		log.Println("Decoding failed, error:", err)
-		return nil, err
+		return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "decode state perturbation: %w", err)
 	}
 	cycles, _ := strconv.ParseUint(config.NofCycles, 10, 32)
 	for i := range data {
 		record := &data[i]
 		if cycles > 0 && uint64(record.Time) >= cycles {
-			return nil, fmt.Errorf("state perturbation time %d is out of range (cycles: %d)", record.Time, cycles)
+			return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation time %d is out of range (cycles: %d)", record.Time, cycles)
 		}
 		if strings.TrimSpace(record.Name) != "" {
 			cleanPath, pathErr := sanitizeCatalogPath(record.Name)
 			if pathErr != nil {
-				return nil, fmt.Errorf("state perturbation: %w", pathErr)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation: %w", pathErr)
 			}
 			entry, ok := config.Catalog[cleanPath]
 			if !ok {
-				return nil, fmt.Errorf("state perturbation %q is not a writable entry in the manifest catalog", cleanPath)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation %q is not a writable entry in the manifest catalog", cleanPath)
 			}
 			catalogAddr, parseErr := strconv.ParseUint(entry.Addr, 0, 64)
 			if parseErr != nil {
-				return nil, fmt.Errorf("state perturbation %q has invalid catalog address %q: %w", cleanPath, entry.Addr, parseErr)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation %q has invalid catalog address %q: %w", cleanPath, entry.Addr, parseErr)
 			}
 			if record.Addr != 0 && record.Addr != catalogAddr {
-				return nil, fmt.Errorf("state perturbation %q specifies address %#x, which does not match catalog address %#x", cleanPath, record.Addr, catalogAddr)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation %q specifies address %#x, which does not match catalog address %#x", cleanPath, record.Addr, catalogAddr)
 			}
 			record.Addr = catalogAddr
 			record.Name = cleanPath
 			if record.Type == "" {
 				record.Type = entry.Type
 			} else if record.Type != entry.Type {
-				return nil, fmt.Errorf("state perturbation %q has TYPE %q; catalog requires %q", cleanPath, record.Type, entry.Type)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation %q has TYPE %q; catalog requires %q", cleanPath, record.Type, entry.Type)
 			}
 			info, typeErr := my_types.ParseSignalType(record.Type)
 			if typeErr != nil {
-				return nil, fmt.Errorf("state perturbation %q: %w", cleanPath, typeErr)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation %q: %w", cleanPath, typeErr)
 			}
 			if record.ValueSize == 0 {
 				record.ValueSize = info.Size
 			} else if record.ValueSize != info.Size {
-				return nil, fmt.Errorf("state perturbation %q has VALUE_SIZE %d; %s requires %d", cleanPath, record.ValueSize, record.Type, info.Size)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation %q has VALUE_SIZE %d; %s requires %d", cleanPath, record.ValueSize, record.Type, info.Size)
 			}
 			if _, typeErr = my_types.EncodeSignalValue(record.Value, record.Type); typeErr != nil {
-				return nil, fmt.Errorf("state perturbation %q: %w", cleanPath, typeErr)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation %q: %w", cleanPath, typeErr)
 			}
 		} else {
 			if record.Addr == 0 {
-				return nil, fmt.Errorf("state perturbation requires either NAME (catalog path) or ADDR")
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation requires either NAME (catalog path) or ADDR")
 			}
 			info, typeErr := my_types.ParseSignalType(record.Type)
 			if typeErr != nil {
-				return nil, fmt.Errorf("state perturbation at %#x: %w", record.Addr, typeErr)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation at %#x: %w", record.Addr, typeErr)
 			}
 			if record.ValueSize != info.Size {
-				return nil, fmt.Errorf("state perturbation at %#x has VALUE_SIZE %d; %s requires %d", record.Addr, record.ValueSize, record.Type, info.Size)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation at %#x has VALUE_SIZE %d; %s requires %d", record.Addr, record.ValueSize, record.Type, info.Size)
 			}
 			if _, typeErr = my_types.EncodeSignalValue(record.Value, record.Type); typeErr != nil {
-				return nil, fmt.Errorf("state perturbation at %#x: %w", record.Addr, typeErr)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "state perturbation at %#x: %w", record.Addr, typeErr)
 			}
 		}
 	}
@@ -260,37 +260,31 @@ func deserializeState(rawData []byte, config *my_types.Configuration) ([]my_type
 
 }
 
-// Serializes a result using MessagePack
-func serialize(result my_types.OutputTrace) (*bytes.Buffer, error) {
+// Serializes a ServerResponse using MessagePack
+func serializeResponse(resp my_types.ServerResponse) (*bytes.Buffer, error) {
 
-	defer timeTrack(time.Now(), "serialize()")
+	defer timeTrack(time.Now(), "serializeResponse()")
 
 	var response bytes.Buffer
 	enc := msgpack.NewEncoder(&response)
-	err := enc.Encode(result)
-	if err != nil {
-		fmt.Println("Result encode error:", err)
+	if err := enc.Encode(resp); err != nil {
+		log.Println("Response encode error:", err)
 		return nil, err
 	}
-	log.Println("Result serialized")
-	// if VERBOSE {
-	// 	log.Println(response)
-	// }
-
 	return &response, nil
 }
 
-// Writes back the response to the client, together with its size
+// Writes back the length-prefixed MessagePack response to the client
 func writeResponse(response *bytes.Buffer, conn net.Conn) error {
 
 	defer timeTrack(time.Now(), "writeResponse()")
 
 	err := binary.Write(conn, binary.BigEndian, uint32(len(response.Bytes())))
 	if err != nil {
-		fmt.Println("Write response length error:", err)
+		log.Println("Write response length error:", err)
 		return err
 	}
-	log.Printf("Sending back %d bytes (%.3f)", uint32(len(response.Bytes())),
+	log.Printf("Sending back %d bytes (%.3f MB)", uint32(len(response.Bytes())),
 		float64(uint32(len(response.Bytes())))/(1024*1024))
 
 	_, err = conn.Write(response.Bytes())
@@ -298,9 +292,69 @@ func writeResponse(response *bytes.Buffer, conn net.Conn) error {
 		log.Println("Error writing response", err)
 		return err
 	}
-	log.Println("Result transfered [->]")
+	log.Println("Response transferred [->]")
 
 	return nil
+}
+
+func sendResponse(conn net.Conn, resp my_types.ServerResponse) error {
+	buf, err := serializeResponse(resp)
+	if err != nil {
+		return err
+	}
+	return writeResponse(buf, conn)
+}
+
+func sendErrorResponse(ctx context.Context, conn net.Conn, mode my_types.Service, err error, fallbackCategory my_types.ErrorCategory) {
+	category, message := my_types.CategorizeError(err, fallbackCategory)
+	_ = simulator.UpdateRedisStatus(ctx, mode, my_types.StatusError, category, message)
+	_ = sendResponse(conn, my_types.ServerResponse{
+		Status:   my_types.StatusError,
+		Category: category,
+		Message:  message,
+	})
+}
+
+func receiveInitialRequest(ctx context.Context, conn net.Conn, mode my_types.Service) (map[string]interface{}, *my_types.Configuration, bool) {
+	// Reset previous simulation state and errors in Redis.
+	// In Falsification mode, Redis is optional for results, so do not fail the request if Redis is unreachable.
+	if err := simulator.ResetRedisSimulation(ctx, mode); err != nil && mode != my_types.Falsification {
+		log.Println("Cannot reset Redis simulation state:", err)
+		sendErrorResponse(ctx, conn, mode, err, my_types.ErrCategoryRedis)
+		return nil, nil, false
+	}
+
+	_, rawData, err := getData(ctx, conn)
+	if err != nil {
+		return nil, nil, false
+	}
+
+	rawTrajectory, config, err := prepareRequest(rawData)
+	if err != nil {
+		log.Println("Invalid simulation request:", err)
+		sendErrorResponse(ctx, conn, mode, err, my_types.ErrCategoryManifest)
+		return nil, nil, false
+	}
+	return rawTrajectory, config, true
+}
+
+func waitForSimulationStart(ctx context.Context, conn net.Conn, mode my_types.Service, readyCh <-chan struct{}, errCh <-chan error, done <-chan struct{}) (error, bool) {
+	select {
+	case <-readyCh:
+		_ = simulator.UpdateRedisStatus(ctx, mode, my_types.StatusRunning, my_types.ErrCategoryNone, "Simulation is running")
+		if err := sendResponse(conn, my_types.ServerResponse{
+			Status:  my_types.StatusStarted,
+			Message: "Simulation started",
+		}); err != nil {
+			return err, false
+		}
+		return nil, true
+	case err := <-errCh:
+		<-done
+		log.Printf("Cannot start %s simulation: %v", mode.String(), err)
+		sendErrorResponse(ctx, conn, mode, err, my_types.ErrCategoryEBPF)
+		return err, false
+	}
 }
 
 // Starts a simulation and streams the output trace to a redis db
@@ -311,40 +365,43 @@ func handleMonitoring(conn net.Conn) {
 	lockServer()
 	defer unlockServer()
 
-	// read raw data
-	dataLen, rawData, err := getData(context.Background(), conn)
-	if err != nil {
-		return
-	}
-	_ = dataLen
-
-	// deserialize data
-	rawTrajectory, config, err := prepareRequest(rawData)
-	if err != nil {
-		log.Println("Invalid simulation request:", err)
+	ctx := context.Background()
+	rawTrajectory, config, ok := receiveInitialRequest(ctx, conn, my_types.Monitoring)
+	if !ok {
 		return
 	}
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	// error channel to get potential error
+	readyCh := make(chan struct{})
 	errCh := make(chan error, 1)
-	defer close(errCh)
-	// start monitoring
-	go simulator.Start(my_types.Monitoring, config, rawTrajectory, errCh, nil, nil, nil, wg)
-	wg.Wait()
-	select {
-	case err = <-errCh:
-		log.Println("Cannot handle monitoring task:", err)
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	go simulator.Start(my_types.Monitoring, config, rawTrajectory, readyCh, errCh, nil, nil, nil, wg)
+	if _, started := waitForSimulationStart(ctx, conn, my_types.Monitoring, readyCh, errCh, done); !started {
 		return
+	}
+
+	<-done
+	select {
+	case err := <-errCh:
+		log.Println("Cannot handle monitoring task:", err)
+		sendErrorResponse(ctx, conn, my_types.Monitoring, err, my_types.ErrCategoryTarget)
 	default:
-		log.Println("Monitoring Monitoring ended")
-		sendSimulationAck(conn, []byte("Simulation ended"))
+		log.Println("Monitoring ended")
+		_ = simulator.UpdateRedisStatus(ctx, my_types.Monitoring, my_types.StatusCompleted, my_types.ErrCategoryNone, "Simulation ended")
+		_ = sendResponse(conn, my_types.ServerResponse{
+			Status:  my_types.StatusCompleted,
+			Message: "Simulation ended",
+		})
 	}
 }
 
 // Starts a falsification and sends the result back to the client
-// todo: compute falsification directly on the server
 func handleFalsification(conn net.Conn) {
 
 	defer conn.Close()
@@ -352,48 +409,42 @@ func handleFalsification(conn net.Conn) {
 	lockServer()
 	defer unlockServer()
 
-	// read raw data
-	dataLen, rawData, err := getData(context.Background(), conn)
-	if err != nil {
+	ctx := context.Background()
+	rawTrajectory, config, ok := receiveInitialRequest(ctx, conn, my_types.Falsification)
+	if !ok {
 		return
 	}
-	_ = dataLen
 
-	// deserialize data
-	rawTrajectory, config, err := prepareRequest(rawData)
-	if err != nil {
-		log.Println("Invalid simulation request:", err)
-		return
-	}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	// error channel to get potential error
+	readyCh := make(chan struct{})
 	errCh := make(chan error, 1)
-	defer close(errCh)
 	resCh := make(chan my_types.OutputTrace, 1)
-	defer close(resCh)
-	// start falsification
-	// todo: handle falsification on the server
-	go simulator.Start(my_types.Falsification, config, rawTrajectory, errCh, resCh, nil, nil, wg)
-	wg.Wait()
-	// check simulation result
-	select {
-	case err = <-errCh:
-		log.Println("Cannot handle falsification task:", err)
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	go simulator.Start(my_types.Falsification, config, rawTrajectory, readyCh, errCh, resCh, nil, nil, wg)
+	if _, started := waitForSimulationStart(ctx, conn, my_types.Falsification, readyCh, errCh, done); !started {
 		return
+	}
+
+	<-done
+	select {
+	case err := <-errCh:
+		log.Println("Cannot handle falsification task:", err)
+		sendErrorResponse(ctx, conn, my_types.Falsification, err, my_types.ErrCategoryTarget)
 	default:
-		// no error, send the output trace to the client
 		outTrace := <-resCh
-		serializedOutputTrace, err := serialize(outTrace)
-		if err != nil {
-			log.Printf("Falsification failed: %v", err)
-			return
-		} else {
-			err = writeResponse(serializedOutputTrace, conn)
-			if err != nil {
-				// log connection write error
-				log.Println("Cannot send response to the client")
-			}
+		_ = simulator.UpdateRedisStatus(ctx, my_types.Falsification, my_types.StatusCompleted, my_types.ErrCategoryNone, "Falsification completed")
+		if err := sendResponse(conn, my_types.ServerResponse{
+			Status:     my_types.StatusCompleted,
+			Message:    "Falsification completed",
+			OutSignals: outTrace.Signals,
+		}); err != nil {
+			log.Println("Cannot send response to the client:", err)
 		}
 	}
 }
@@ -401,26 +452,27 @@ func handleFalsification(conn net.Conn) {
 func readStatePerturbationFromNet(ctx context.Context, conn net.Conn, config *my_types.Configuration, ch chan<- []my_types.StateRecord) {
 
 	for {
-		// read data from network
 		dataLen, rawData, err := getData(ctx, conn)
-		if err != nil {
-			return
-		}
-		_ = dataLen
-		// deserialize data (contains a vector named "time" to index data points)
-		if dataLen == 0 {
+		if err != nil || dataLen == 0 {
 			return
 		}
 		rawPerturbation, err := deserializeState(rawData, config)
 		if err != nil {
 			log.Println("Invalid state perturbation:", err)
-			sendSimulationAck(conn, []byte("ERROR: "+err.Error()))
+			sendErrorResponse(ctx, conn, my_types.StatePerturbation, err, my_types.ErrCategoryPerturbation)
 			return
 		}
-		// send ack to client
-		sendSimulationAck(conn, []byte("Perturbation received correctly"))
-		// send data to the injector via channel
-		ch <- rawPerturbation
+		if err := sendResponse(conn, my_types.ServerResponse{
+			Status:  my_types.StatusAck,
+			Message: "Perturbation received correctly",
+		}); err != nil {
+			return
+		}
+		select {
+		case ch <- rawPerturbation:
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
@@ -431,79 +483,68 @@ func handleStatePerturbation(conn net.Conn) {
 	lockServer()
 	defer unlockServer()
 
-	// read the input trace
-	dataLen, rawData, err := getData(context.Background(), conn)
-	if err != nil {
-		return
-	}
-	_ = dataLen
-
-	// deserialize data
-	rawTrajectory, config, err := prepareRequest(rawData)
-	if err != nil {
-		log.Println("Invalid simulation request:", err)
+	baseCtx := context.Background()
+	rawTrajectory, config, ok := receiveInitialRequest(baseCtx, conn, my_types.StatePerturbation)
+	if !ok {
 		return
 	}
 
-	// wg for synchronization
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	// error channel to get potential error
+	readyCh := make(chan struct{})
 	errCh := make(chan error, 1)
-	defer close(errCh)
 	resCh := make(chan my_types.OutputTrace, 1)
-	defer close(resCh)
-	// create the perturbation communication channel
-	statePertCh := make(chan []my_types.StateRecord, 24*512) // 12 KB buffer
-	defer close(statePertCh)
-	// start the simulation (async)
-	go simulator.Start(my_types.StatePerturbation, config, rawTrajectory, errCh, resCh, nil, statePertCh, wg)
-	// helper to check simulation ended without blocking
+	statePertCh := make(chan []my_types.StateRecord, 24*512)
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
 		close(done)
 	}()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	// start state perturbation network listener
-	go readStatePerturbationFromNet(ctx, conn, config, statePertCh)
-	// send an ack to the client (so the client can send the state perturbation...)
-	sendSimulationAck(conn, []byte("Simulation started"))
-simulateAndPerturbState:
-	for {
-		select {
-		case <-done:
-			log.Printf("Simulation ended, checking result...")
-			break simulateAndPerturbState
-		default:
-			log.Print("Keep waiting for the end of the simulation")
-			// listen and inject data
-			time.Sleep(3 * time.Second)
-		}
+
+	go simulator.Start(my_types.StatePerturbation, config, rawTrajectory, readyCh, errCh, resCh, nil, statePertCh, wg)
+	if _, started := waitForSimulationStart(baseCtx, conn, my_types.StatePerturbation, readyCh, errCh, done); !started {
+		return
 	}
-	// check no errors occurred
+
+	ctx, cancel := context.WithCancel(baseCtx)
+	defer cancel()
+	go readStatePerturbationFromNet(ctx, conn, config, statePertCh)
+
+	<-done
+	log.Printf("Simulation ended, checking result...")
+
 	select {
-	case err = <-errCh:
-		log.Println("Error occurred during signal perturbation:", err)
-		sendSimulationAck(conn, []byte("ERROR: "+err.Error()))
-		return
+	case err := <-errCh:
+		log.Println("Error occurred during state perturbation:", err)
+		sendErrorResponse(baseCtx, conn, my_types.StatePerturbation, err, my_types.ErrCategoryPerturbation)
 	default:
-		// no error
 		log.Println("Simulation finished without errors")
-		sendSimulationAck(conn, []byte("Simulation ended without errors"))
-		return
+		_ = simulator.UpdateRedisStatus(baseCtx, my_types.StatePerturbation, my_types.StatusCompleted, my_types.ErrCategoryNone, "Simulation ended without errors")
+		_ = sendResponse(conn, my_types.ServerResponse{
+			Status:  my_types.StatusCompleted,
+			Message: "Simulation ended without errors",
+		})
 	}
 }
 
 func deserializeSignalPerturbation(rawData []byte, config *my_types.Configuration) (map[string]interface{}, error) {
 	rawPerturbation, err := deserialize(rawData)
 	if err != nil {
-		return nil, err
+		return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "decode signal perturbation: %w", err)
 	}
 	timeValues, ok := rawPerturbation["time"].([]interface{})
 	if !ok {
-		return nil, fmt.Errorf("signal perturbation requires a time array")
+		return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "signal perturbation requires a time array")
+	}
+	cycles, _ := strconv.ParseUint(config.NofCycles, 10, 32)
+	for _, rawTimeVal := range timeValues {
+		tVal, valid := customTimeVal(rawTimeVal)
+		if !valid {
+			return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "signal perturbation time value %v is not a valid non-negative integer", rawTimeVal)
+		}
+		if cycles > 0 && uint64(tVal) >= cycles {
+			return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "signal perturbation time %d is out of range (cycles: %d)", tVal, cycles)
+		}
 	}
 	writable := make(map[string]my_types.Signal)
 	for _, group := range config.Writes {
@@ -524,22 +565,22 @@ func deserializeSignalPerturbation(rawData []byte, config *my_types.Configuratio
 		}
 		cleanKey, keyErr := sanitizeCatalogPath(key)
 		if keyErr != nil {
-			return nil, fmt.Errorf("signal perturbation: %w", keyErr)
+			return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "signal perturbation: %w", keyErr)
 		}
 		sig, matched := writable[cleanKey]
 		if !matched {
-			return nil, fmt.Errorf("signal perturbation %q is not a configured writable signal", cleanKey)
+			return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "signal perturbation %q is not a configured writable signal", cleanKey)
 		}
 		vals, ok := rawVals.([]interface{})
 		if !ok {
-			return nil, fmt.Errorf("signal perturbation %q must be an array of values", cleanKey)
+			return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "signal perturbation %q must be an array of values", cleanKey)
 		}
 		if len(vals) != len(timeValues) {
-			return nil, fmt.Errorf("signal perturbation %q has %d values for %d time values", cleanKey, len(vals), len(timeValues))
+			return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "signal perturbation %q has %d values for %d time values", cleanKey, len(vals), len(timeValues))
 		}
 		for _, v := range vals {
 			if _, err := my_types.EncodeSignalValue(v, sig.Type); err != nil {
-				return nil, fmt.Errorf("signal perturbation %q: %w", cleanKey, err)
+				return nil, my_types.NewSimulationErrorf(my_types.ErrCategoryPerturbation, "signal perturbation %q: %w", cleanKey, err)
 			}
 		}
 		canonicalKey := sig.Path
@@ -551,29 +592,70 @@ func deserializeSignalPerturbation(rawData []byte, config *my_types.Configuratio
 	return normalized, nil
 }
 
+func customTimeVal(rawVal interface{}) (uint32, bool) {
+	switch v := rawVal.(type) {
+	case uint8:
+		return uint32(v), true
+	case uint16:
+		return uint32(v), true
+	case uint32:
+		return v, true
+	case uint64:
+		return uint32(v), true
+	case int8:
+		if v < 0 {
+			return 0, false
+		}
+		return uint32(v), true
+	case int16:
+		if v < 0 {
+			return 0, false
+		}
+		return uint32(v), true
+	case int32:
+		if v < 0 {
+			return 0, false
+		}
+		return uint32(v), true
+	case int64:
+		if v < 0 {
+			return 0, false
+		}
+		return uint32(v), true
+	case int:
+		if v < 0 {
+			return 0, false
+		}
+		return uint32(v), true
+	default:
+		return 0, false
+	}
+}
+
 func readPerturbationFromNet(ctx context.Context, conn net.Conn, config *my_types.Configuration, ch chan<- map[string]interface{}) {
 
 	for {
-		// read data from network
 		dataLen, rawData, err := getData(ctx, conn)
-		if err != nil {
-			return
-		}
-		_ = dataLen
-		// deserialize data (contains a vector named "time" to index data points)
-		if dataLen == 0 {
+		if err != nil || dataLen == 0 {
 			return
 		}
 		rawPerturbation, err := deserializeSignalPerturbation(rawData, config)
 		if err != nil {
 			log.Println("Invalid signal perturbation:", err)
-			sendSimulationAck(conn, []byte("ERROR: "+err.Error()))
+			sendErrorResponse(ctx, conn, my_types.SignalPerturbation, err, my_types.ErrCategoryPerturbation)
 			return
 		}
-		// send ack to client
-		sendSimulationAck(conn, []byte("Perturbation received correctly"))
-		// send data to the injector via channel
-		ch <- rawPerturbation
+		if err := sendResponse(conn, my_types.ServerResponse{
+			Status:  my_types.StatusAck,
+			Message: "Perturbation received correctly",
+		}); err != nil {
+			return
+		}
+		select {
+		case ch <- rawPerturbation:
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
@@ -584,67 +666,47 @@ func handleSignalPerturbation(conn net.Conn) {
 	lockServer()
 	defer unlockServer()
 
-	// read the input trace
-	dataLen, rawData, err := getData(context.Background(), conn)
-	if err != nil {
-		return
-	}
-	_ = dataLen
-
-	// deserialize data
-	rawTrajectory, config, err := prepareRequest(rawData)
-	if err != nil {
-		log.Println("Invalid simulation request:", err)
+	baseCtx := context.Background()
+	rawTrajectory, config, ok := receiveInitialRequest(baseCtx, conn, my_types.SignalPerturbation)
+	if !ok {
 		return
 	}
 
-	// wg for synchronization
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	// error channel to get potential error
+	readyCh := make(chan struct{})
 	errCh := make(chan error, 1)
-	defer close(errCh)
 	resCh := make(chan my_types.OutputTrace, 1)
-	defer close(resCh)
-	// create the perturbation communication channel
-	pertCh := make(chan map[string]interface{}, 1024*1024*64) // 32 MB buffer
-	defer close(pertCh)
-	// start the simulation (async)
-	go simulator.Start(my_types.SignalPerturbation, config, rawTrajectory, errCh, resCh, pertCh, nil, wg)
-	// helper to check simulation ended without blocking
+	pertCh := make(chan map[string]interface{}, 1024)
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
 		close(done)
 	}()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	// start perturbation network listener
-	go readPerturbationFromNet(ctx, conn, config, pertCh)
-	// send perturbation started ack to client (so client can send the perturbation...)
-	sendSimulationAck(conn, []byte("Simulation started"))
-simulateAndPerturbSignal:
-	for {
-		select {
-		case <-done:
-			log.Printf("Simulation ended, checking result...")
-			break simulateAndPerturbSignal
-		default:
-			log.Print("Keep waiting for the end of the simulation")
-			// listen and inject data
-			time.Sleep(3 * time.Second)
-		}
+
+	go simulator.Start(my_types.SignalPerturbation, config, rawTrajectory, readyCh, errCh, resCh, pertCh, nil, wg)
+	if _, started := waitForSimulationStart(baseCtx, conn, my_types.SignalPerturbation, readyCh, errCh, done); !started {
+		return
 	}
-	// check no errors occurred
+
+	ctx, cancel := context.WithCancel(baseCtx)
+	defer cancel()
+	go readPerturbationFromNet(ctx, conn, config, pertCh)
+
+	<-done
+	log.Printf("Simulation ended, checking result...")
+
 	select {
-	case err = <-errCh:
+	case err := <-errCh:
 		log.Println("Error occurred during signal perturbation:", err)
-		return
+		sendErrorResponse(baseCtx, conn, my_types.SignalPerturbation, err, my_types.ErrCategoryPerturbation)
 	default:
-		// no error
 		log.Println("Simulation finished without errors")
-		sendSimulationAck(conn, []byte("Simulation ended without errors"))
-		return
+		_ = simulator.UpdateRedisStatus(baseCtx, my_types.SignalPerturbation, my_types.StatusCompleted, my_types.ErrCategoryNone, "Simulation ended without errors")
+		_ = sendResponse(conn, my_types.ServerResponse{
+			Status:  my_types.StatusCompleted,
+			Message: "Simulation ended without errors",
+		})
 	}
 }
 
@@ -670,20 +732,4 @@ func setReadDeadline(conn net.Conn, seconds uint32) error {
 func setWriteDeadline(conn net.Conn, seconds uint32) error {
 
 	return conn.SetWriteDeadline(time.Now().Add(time.Duration(seconds)))
-}
-
-func sendSimulationAck(conn net.Conn, msg []byte) {
-
-	maxMsgSize := 64
-	paddedMsg := make([]byte, maxMsgSize)
-	for p, v := range msg {
-		if p > maxMsgSize {
-			break
-		}
-		paddedMsg[p] = v
-	}
-	_, err := conn.Write(paddedMsg)
-	if err != nil {
-		log.Print("Error writing response", err)
-	}
 }
