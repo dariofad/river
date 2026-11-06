@@ -615,7 +615,7 @@ func Start(
 
 	switch simulationMode {
 	case my_types.Monitoring:
-		if err := monitorSimulation(ctx, probeObjs, nof_signals_read, cReads, simulationDone, cancelSimulation); err != nil {
+		if err := monitorSimulation(context.Background(), probeObjs, nof_signals_read, cReads, simulationDone, cancelSimulation); err != nil {
 			errCh <- err
 			return
 		}
@@ -627,12 +627,12 @@ func Start(
 		}
 		resCh <- outSignals
 	case my_types.StatePerturbation:
-		if err := runStatePerturbation(ctx, cancelSimulation, statePertCh, probeObjs, relocation, loadBias, nof_signals_read, cReads, simulationDone); err != nil {
+		if err := runStatePerturbation(context.Background(), cancelSimulation, statePertCh, probeObjs, relocation, loadBias, nof_signals_read, cReads, simulationDone); err != nil {
 			errCh <- err
 			return
 		}
 	case my_types.SignalPerturbation:
-		if err := runSignalPerturbation(ctx, cancelSimulation, pertCh, probeObjs, nof_signals_read, nof_signals_written, cReads, cWrites, simulationDone); err != nil {
+		if err := runSignalPerturbation(context.Background(), cancelSimulation, pertCh, probeObjs, nof_signals_read, nof_signals_written, cReads, cWrites, simulationDone); err != nil {
 			errCh <- err
 			return
 		}
